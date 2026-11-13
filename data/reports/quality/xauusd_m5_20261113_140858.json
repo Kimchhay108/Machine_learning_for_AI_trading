@@ -1,0 +1,52 @@
+{
+  "metadata": {
+    "instrument": "XAUUSD",
+    "timeframe": "m5",
+    "data_source": "dukascopy",
+    "generated_at_utc": "2026-11-13T14:08:58.869005+00:00",
+    "report_id": "XAUUSD_m5_20261113_140858"
+  },
+  "dataset_overview": {
+    "total_candles_received": 804,
+    "valid_candles_retained": 804,
+    "start_time_utc": "2024-05-01 00:00:00 UTC",
+    "end_time_utc": "2024-05-03 20:55:00 UTC",
+    "price_low_extreme": 2277.165,
+    "price_high_extreme": 2328.225,
+    "mean_close_price": 2301.894,
+    "total_volume": 169.5287,
+    "zero_volume_percent": 0.0,
+    "average_candle_range": 2.014
+  },
+  "validation_summary": {
+    "is_passed": true,
+    "duplicate_timestamps": 0,
+    "ohlc_violations": 0,
+    "price_range_violations": 0,
+    "extreme_spikes": 0,
+    "volume_anomalies": 0,
+    "total_gaps": 2,
+    "weekend_closure_gaps": 0,
+    "intraweek_anomalous_gaps": 2
+  },
+  "errors": [],
+  "warnings": [
+    "Identified 2 intra-week missing candle gaps (non-weekend market pauses/dropouts)."
+  ],
+  "gap_details": [
+    {
+      "start": "2024-05-01 20:55:00 UTC",
+      "end": "2024-05-01 22:00:00 UTC",
+      "duration_min": 65.0,
+      "missing_bars": 12,
+      "type": "Intra-week Gap"
+    },
+    {
+      "start": "2024-05-02 20:55:00 UTC",
+      "end": "2024-05-02 22:00:00 UTC",
+      "duration_min": 65.0,
+      "missing_bars": 12,
+      "type": "Intra-week Gap"
+    }
+  ]
+}
