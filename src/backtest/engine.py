@@ -181,13 +181,13 @@ class RealisticBacktestEngine:
                             be_active = True
 
                         hit_sl = c_low <= sl
-                        if hit_sl:
-                            exit_price = sl - self.slippage_usd
-                            exit_reason = "PARTIAL_TP_BE" if ptp_taken else ("BREAKEVEN" if be_active else "STOP_LOSS")
-                            trade_closed = True
-                        elif hit_tp:
+                        if hit_tp:
                             exit_price = tp - self.slippage_usd
                             exit_reason = "TAKE_PROFIT"
+                            trade_closed = True
+                        elif hit_sl:
+                            exit_price = sl - self.slippage_usd
+                            exit_reason = "PARTIAL_TP_BE" if ptp_taken else ("BREAKEVEN" if be_active else "STOP_LOSS")
                             trade_closed = True
                         elif bars_held >= self.max_holding_bars:
                             exit_price = c_close - self.spread_usd
@@ -232,13 +232,13 @@ class RealisticBacktestEngine:
                             be_active = True
 
                         hit_sl = c_high >= sl
-                        if hit_sl:
-                            exit_price = sl + self.slippage_usd
-                            exit_reason = "PARTIAL_TP_BE" if ptp_taken else ("BREAKEVEN" if be_active else "STOP_LOSS")
-                            trade_closed = True
-                        elif hit_tp:
+                        if hit_tp:
                             exit_price = tp + self.slippage_usd
                             exit_reason = "TAKE_PROFIT"
+                            trade_closed = True
+                        elif hit_sl:
+                            exit_price = sl + self.slippage_usd
+                            exit_reason = "PARTIAL_TP_BE" if ptp_taken else ("BREAKEVEN" if be_active else "STOP_LOSS")
                             trade_closed = True
                         elif bars_held >= self.max_holding_bars:
                             exit_price = c_close + self.spread_usd
