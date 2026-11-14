@@ -30,6 +30,8 @@ export interface SMCStructure {
   recent_choch: { timestamp: number; direction: 'BULLISH' | 'BEARISH'; price: number }[];
   order_blocks: { timestamp: number; direction: 'BULLISH' | 'BEARISH'; price: number }[];
   liquidity_sweeps: { timestamp: number; direction: 'BULLISH' | 'BEARISH'; price: number }[];
+  ict_2022_setups?: { timestamp: number; type: 'BULLISH' | 'BEARISH'; price: number }[];
+  silver_bullet_setups?: { timestamp: number; type: 'BULLISH' | 'BEARISH'; price: number }[];
 }
 
 export interface MarketFeaturesResponse {
@@ -87,6 +89,7 @@ export interface PredictionResponse {
   contributing_features: {
     top_technical_drivers?: string[];
     top_smc_drivers?: string[];
+    active_ict_setups?: string[];
     submodel_agreement?: {
       tech_prediction?: number;
       smc_prediction?: number;

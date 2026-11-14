@@ -18,6 +18,7 @@ logger = get_logger("api.routers.backtest")
 router = APIRouter(prefix="/api/backtest", tags=["Backtest Lab"])
 
 _CACHED_BACKTEST_FILE = settings.BACKTEST_DIR / "latest_backtest.joblib"
+_memory_cached_result: Optional[RealisticBacktestEngine] = None
 
 
 @router.post("/run", response_model=BacktestResponse)
@@ -54,10 +55,17 @@ def run_backtest(req: BacktestRequest) -> BacktestResponse:
 
     result = backtester.run(test_df, signals=decisions)
 
-    # Save to cache
+    # Save to memory and disk cache
+    global _memory_cached_result
+    _memory_cached_result = result
+
     try:
         settings.BACKTEST_DIR.mkdir(parents=True, exist_ok=True)
-        joblib.dump(result, _CACHED_BACKTEST_FILE)
+        tmp_file = _CACHED_BACKTEST_FILE.with_suffix(".tmp")
+        joblib.dump(result, tmp_file)
+        if tmp_file.exists():
+            import shutil
+            shutil.move(str(tmp_file), str(_CACHED_BACKTEST_FILE))
     except Exception as e:
         logger.warning(f"Could not cache backtest result to disk: {e}")
 
@@ -102,12 +110,15 @@ def run_backtest(req: BacktestRequest) -> BacktestResponse:
 @router.get("/results", response_model=BacktestResponse)
 def get_backtest_results() -> BacktestResponse:
     """Retrieve the latest cached backtest simulation results."""
-    if not _CACHED_BACKTEST_FILE.exists():
+    global _memory_cached_result
+    if _memory_cached_result is not None:
+        result = _memory_cached_result
+    elif _CACHED_BACKTEST_FILE.exists():
+        result = joblib.load(_CACHED_BACKTEST_FILE)
+    else:
         # Trigger default backtest if cache doesn't exist yet
         default_req = BacktestRequest()
         return run_backtest(default_req)
-
-    result = joblib.load(_CACHED_BACKTEST_FILE)
 
     trades_schema = [
         TradeRecordSchema(

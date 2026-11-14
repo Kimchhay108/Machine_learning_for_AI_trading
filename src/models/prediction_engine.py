@@ -112,9 +112,29 @@ class PredictionEngine:
         smc_imp = self.ensemble.model_b.get_feature_importances()
         top_smc = list(smc_imp.keys())[:3] if smc_imp else []
 
+        # Active Institutional ICT Models detected on latest candle
+        ict_setups = []
+        if latest_row.get("ict_2022_bullish", pd.Series([0])).iloc[0] == 1:
+            ict_setups.append("ICT 2022 Mentorship (Bullish FVG + Discount)")
+        if latest_row.get("ict_2022_bearish", pd.Series([0])).iloc[0] == 1:
+            ict_setups.append("ICT 2022 Mentorship (Bearish FVG + Premium)")
+        if latest_row.get("ict_silver_bullet_bullish", pd.Series([0])).iloc[0] == 1:
+            ict_setups.append("ICT Silver Bullet Macro (Bullish)")
+        if latest_row.get("ict_silver_bullet_bearish", pd.Series([0])).iloc[0] == 1:
+            ict_setups.append("ICT Silver Bullet Macro (Bearish)")
+        if latest_row.get("ict_judas_swing_bullish", pd.Series([0])).iloc[0] == 1:
+            ict_setups.append("ICT Judas Swing (London Open Bullish Reversal)")
+        if latest_row.get("ict_judas_swing_bearish", pd.Series([0])).iloc[0] == 1:
+            ict_setups.append("ICT Judas Swing (London Open Bearish Reversal)")
+        if latest_row.get("ict_turtle_soup_bullish", pd.Series([0])).iloc[0] == 1:
+            ict_setups.append("ICT Turtle Soup (Liquidity Run Rejection Long)")
+        if latest_row.get("ict_turtle_soup_bearish", pd.Series([0])).iloc[0] == 1:
+            ict_setups.append("ICT Turtle Soup (Liquidity Run Rejection Short)")
+
         contributing = {
             "top_technical_drivers": top_tech,
             "top_smc_drivers": top_smc,
+            "active_ict_setups": ict_setups,
             "submodel_agreement": {
                 "tech_prediction": int(self.ensemble.model_a.predict(latest_row)[0]),
                 "smc_prediction": int(self.ensemble.model_b.predict(latest_row)[0]),

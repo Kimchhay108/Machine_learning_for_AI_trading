@@ -25,7 +25,12 @@ SMC_FEATURE_COLUMNS = [
     "order_block_bullish", "order_block_bearish",
     "dealing_range_pos", "is_discount_zone", "is_premium_zone", "is_ote_long_zone", "is_ote_short_zone",
     "session_asian", "session_london", "session_ny", "session_london_ny_overlap",
-    "swept_pdh", "swept_pdl"
+    "swept_pdh", "swept_pdl",
+    # Institutional ICT Models:
+    "ict_2022_bullish", "ict_2022_bearish",
+    "ict_silver_bullet_window", "ict_silver_bullet_bullish", "ict_silver_bullet_bearish",
+    "ict_judas_swing_bullish", "ict_judas_swing_bearish",
+    "ict_turtle_soup_bullish", "ict_turtle_soup_bearish"
 ]
 
 

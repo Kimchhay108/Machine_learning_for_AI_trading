@@ -135,14 +135,20 @@ def get_model_performance(
     feat_path = features_dir / "m5_features.parquet"
     lbl_path = labels_dir / "m5_labels.parquet"
 
-    if not feat_path.exists() or not lbl_path.exists():
+    if not feat_path.exists():
         raise HTTPException(
             status_code=404,
-            detail="Features or Labels parquet files not found for performance evaluation.",
+            detail="Features parquet file not found for performance evaluation.",
         )
 
     df_feats = pd.read_parquet(feat_path)
-    df_lbls = pd.read_parquet(lbl_path)
+    if not lbl_path.exists():
+        from src.labels.labeling_engine import LabelingEngine
+        labeling = LabelingEngine()
+        df_lbls = labeling.compute_all_labels(df_feats)
+        labeling.save_labels(df_lbls)
+    else:
+        df_lbls = pd.read_parquet(lbl_path)
 
     target_col = "label_dir_ternary_15m"
     if target_col not in df_lbls.columns:

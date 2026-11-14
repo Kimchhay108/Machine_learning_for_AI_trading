@@ -30,6 +30,8 @@ class SMCStructure(BaseModel):
     recent_choch: List[Dict[str, Any]] = []
     order_blocks: List[Dict[str, Any]] = []
     liquidity_sweeps: List[Dict[str, Any]] = []
+    ict_2022_setups: List[Dict[str, Any]] = []
+    silver_bullet_setups: List[Dict[str, Any]] = []
 
 
 class MarketFeaturesResponse(BaseModel):

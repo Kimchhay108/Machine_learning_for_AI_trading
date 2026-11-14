@@ -164,6 +164,8 @@ def get_market_features(
     recent_choch = []
     order_blocks = []
     liquidity_sweeps = []
+    ict_2022_setups = []
+    silver_bullet_setups = []
 
     for _, row in lookback.iterrows():
         t = int(row["timestamp"])
@@ -209,6 +211,16 @@ def get_market_features(
         elif row.get("liquidity_sweep_bearish", 0) == 1:
             liquidity_sweeps.append({"timestamp": t, "direction": "BEARISH", "price": round(float(row["high"]), 2)})
 
+        if row.get("ict_2022_bullish", 0) == 1:
+            ict_2022_setups.append({"timestamp": t, "type": "BULLISH", "price": round(float(row["close"]), 2)})
+        elif row.get("ict_2022_bearish", 0) == 1:
+            ict_2022_setups.append({"timestamp": t, "type": "BEARISH", "price": round(float(row["close"]), 2)})
+
+        if row.get("ict_silver_bullet_bullish", 0) == 1:
+            silver_bullet_setups.append({"timestamp": t, "type": "BULLISH", "price": round(float(row["close"]), 2)})
+        elif row.get("ict_silver_bullet_bearish", 0) == 1:
+            silver_bullet_setups.append({"timestamp": t, "type": "BEARISH", "price": round(float(row["close"]), 2)})
+
     smc = SMCStructure(
         swing_highs=swing_highs[-10:],
         swing_lows=swing_lows[-10:],
@@ -217,6 +229,8 @@ def get_market_features(
         recent_choch=recent_choch[-5:],
         order_blocks=order_blocks[-5:],
         liquidity_sweeps=liquidity_sweeps[-5:],
+        ict_2022_setups=ict_2022_setups[-5:],
+        silver_bullet_setups=silver_bullet_setups[-5:],
     )
 
     return MarketFeaturesResponse(

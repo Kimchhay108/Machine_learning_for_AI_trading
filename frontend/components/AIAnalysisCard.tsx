@@ -171,7 +171,7 @@ export default function AIAnalysisCard({ prediction, loading }: AIAnalysisCardPr
               {formatDecision(contributing_features.submodel_agreement.tech_prediction)}
             </div>
             <div className="p-1.5 rounded bg-dark-800 border border-dark-700">
-              <span className="text-gray-400 block text-[10px]">Model B (SMC)</span>
+              <span className="text-gray-400 block text-[10px]">Model B (SMC / ICT)</span>
               {formatDecision(contributing_features.submodel_agreement.smc_prediction)}
             </div>
             <div className="p-1.5 rounded bg-dark-800 border border-dark-700">
@@ -181,6 +181,36 @@ export default function AIAnalysisCard({ prediction, loading }: AIAnalysisCardPr
           </div>
         </div>
       )}
+
+      {/* Institutional ICT Models Status */}
+      <div className="bg-dark-850 p-3 rounded border border-dark-700 space-y-2">
+        <span className="text-xs font-semibold text-gray-300 flex items-center justify-between">
+          <span className="flex items-center space-x-1">
+            <ShieldAlert className="w-3.5 h-3.5 text-gold-500" />
+            <span>ICT 2022 & Institutional Setups</span>
+          </span>
+          <span className="text-[10px] bg-gold-500/10 text-gold-400 px-1.5 py-0.5 rounded border border-gold-500/20 font-mono">
+            Active
+          </span>
+        </span>
+        {contributing_features?.active_ict_setups && contributing_features.active_ict_setups.length > 0 ? (
+          <div className="space-y-1">
+            {contributing_features.active_ict_setups.map((setup, idx) => (
+              <div
+                key={idx}
+                className="text-xs px-2 py-1.5 rounded bg-gold-500/10 border border-gold-500/30 text-gold-300 font-medium flex items-center space-x-1.5"
+              >
+                <div className="w-1.5 h-1.5 rounded-full bg-gold-400 animate-pulse" />
+                <span>{setup}</span>
+              </div>
+            ))}
+          </div>
+        ) : (
+          <p className="text-[11px] text-gray-400 leading-relaxed">
+            Monitoring for ICT 2022 (Liquidity Sweep $\to$ MSS $\to$ FVG) and Silver Bullet macro windows.
+          </p>
+        )}
+      </div>
 
       {/* Trade Execution References */}
       <div className="p-3 bg-dark-850 rounded border border-dark-700 space-y-1.5 text-xs">

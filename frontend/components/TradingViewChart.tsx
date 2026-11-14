@@ -231,6 +231,32 @@ export default function TradingViewChart({
           });
         }
       });
+
+      // ICT 2022 Mentorship Model Markers
+      features.smc.ict_2022_setups?.forEach((ict) => {
+        if (uniqueMap.has(ict.timestamp)) {
+          markers.push({
+            time: ict.timestamp as Time,
+            position: ict.type === 'BULLISH' ? 'belowBar' : 'aboveBar',
+            color: '#eab308',
+            shape: ict.type === 'BULLISH' ? 'arrowUp' : 'arrowDown',
+            text: `ICT 2022 ${ict.type === 'BULLISH' ? 'BUY' : 'SELL'}`,
+          });
+        }
+      });
+
+      // ICT Silver Bullet Markers
+      features.smc.silver_bullet_setups?.forEach((sb) => {
+        if (uniqueMap.has(sb.timestamp)) {
+          markers.push({
+            time: sb.timestamp as Time,
+            position: sb.type === 'BULLISH' ? 'belowBar' : 'aboveBar',
+            color: '#c084fc',
+            shape: 'circle',
+            text: `Silver Bullet ${sb.type[0]}`,
+          });
+        }
+      });
     }
 
     // Add AI Signal Marker on the latest candle
