@@ -464,6 +464,61 @@ def cmd_retrain(args: argparse.Namespace) -> int:
     return 0 if eval_result.promoted else 1
 
 
+def cmd_clean(args: argparse.Namespace) -> int:
+    """Clean up raw ingestion cache and intermediate training labels to save disk space."""
+    import shutil
+
+    def get_dir_size_mb(path):
+        if not path.exists():
+            return 0.0
+        total = sum(f.stat().st_size for f in path.glob("**/*") if f.is_file())
+        return total / (1024 * 1024)
+
+    initial_size = get_dir_size_mb(settings.DATA_DIR)
+    freed = 0.0
+
+    print("\n" + "=" * 65)
+    print("  XAUUSD AI TRADING PLATFORM: DATA CLEANUP UTILITY")
+    print("=" * 65)
+    print(f"Initial Data Directory Size: {initial_size:.2f} MB\n")
+
+    # 1. Clean data/raw (raw Dukascopy downloads already resampled to Parquet)
+    raw_dir = settings.RAW_DATA_DIR
+    if raw_dir.exists():
+        raw_sz = get_dir_size_mb(raw_dir)
+        for item in list(raw_dir.glob("**/*")):
+            if item.is_file():
+                try:
+                    freed += item.stat().st_size / (1024 * 1024)
+                    item.unlink()
+                except Exception:
+                    pass
+        print(f" [✓] Cleaned raw ingestion cache: {raw_sz:.2f} MB freed.")
+
+    # 2. Clean data/labels (training labels only needed during model training)
+    if args.clean_labels:
+        lbl_dir = settings.LABELS_DIR
+        if lbl_dir.exists():
+            lbl_sz = get_dir_size_mb(lbl_dir)
+            for item in list(lbl_dir.glob("**/*")):
+                if item.is_file():
+                    try:
+                        freed += item.stat().st_size / (1024 * 1024)
+                        item.unlink()
+                    except Exception:
+                        pass
+            print(f" [✓] Cleaned intermediate training labels: {lbl_sz:.2f} MB freed.")
+
+    final_size = get_dir_size_mb(settings.DATA_DIR)
+    print("\n" + "-" * 40)
+    print(f" Total Space Reclaimed: {freed:.2f} MB")
+    print(f" Current Data Size:     {final_size:.2f} MB")
+    print("-" * 40)
+    print(" Preserved: Active Trained Models, Processed Candles, and Paper Balance.")
+    print("=" * 65 + "\n")
+    return 0
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(
         description="XAUUSD AI Trading Platform - Data Pipeline CLI",
@@ -536,6 +591,11 @@ def main() -> int:
     p_rt.add_argument("--min-accuracy", type=float, default=0.35, help="Minimum selective accuracy requirement")
     p_rt.add_argument("--min-coverage", type=float, default=15.0, help="Minimum coverage percentage requirement")
     p_rt.set_defaults(func=cmd_retrain)
+
+    # Subcommand: clean
+    p_clean = subparsers.add_parser("clean", help="Clean up raw download cache and training labels to save disk space")
+    p_clean.add_argument("--clean-labels", action="store_true", default=True, help="Clean intermediate training labels")
+    p_clean.set_defaults(func=cmd_clean)
 
     # Subcommand: api
     p_api = subparsers.add_parser("api", help="Start FastAPI backend server")
