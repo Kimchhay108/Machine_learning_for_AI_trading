@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useEffect, useRef, useState, useCallback } from 'react';
 import {
   createChart,
   IChartApi,
@@ -10,7 +10,7 @@ import {
   Time,
   SeriesMarker,
 } from 'lightweight-charts';
-import { Candle, MarketFeaturesResponse, PredictionResponse } from '../lib/api';
+import { Candle, MarketFeaturesResponse, PredictionResponse, ModelSetupItem } from '../lib/api';
 import {
   Maximize2,
   Minimize2,
@@ -22,6 +22,9 @@ import {
   Filter,
   Eye,
   Info,
+  Target,
+  Shield,
+  Square,
 } from 'lucide-react';
 
 interface TradingViewChartProps {
@@ -33,6 +36,23 @@ interface TradingViewChartProps {
 }
 
 type MarkerFilterMode = 'triggers' | 'structure' | 'all' | 'clean';
+type BoxModelType = 'ensemble' | 'smc_ict' | 'technical' | 'price_action';
+
+interface RiskRewardBoxCoords {
+  x: number;
+  width: number;
+  greenY: number;
+  greenH: number;
+  redY: number;
+  redH: number;
+  entryY: number;
+  tpPrice: number;
+  slPrice: number;
+  entryPrice: number;
+  dir: string;
+  rr: number;
+  modelName: string;
+}
 
 export default function TradingViewChart({
   candles,
@@ -48,11 +68,22 @@ export default function TradingViewChart({
   const ema50SeriesRef = useRef<ISeriesApi<'Line'> | null>(null);
   const ema200SeriesRef = useRef<ISeriesApi<'Line'> | null>(null);
 
+  // Price lines refs
+  const tpPriceLineRef = useRef<any>(null);
+  const entryPriceLineRef = useRef<any>(null);
+  const slPriceLineRef = useRef<any>(null);
+
   // Overlay visibility toggles & anti-stacking filters
   const [showEMAs, setShowEMAs] = useState(true);
+  const [showRRBoxes, setShowRRBoxes] = useState(true);
+  const [activeBoxModel, setActiveBoxModel] = useState<BoxModelType>('ensemble');
   const [markerFilter, setMarkerFilter] = useState<MarkerFilterMode>('triggers');
   const [showTfGuide, setShowTfGuide] = useState(false);
   const [isFullscreen, setIsFullscreen] = useState(false);
+  const [boxCoords, setBoxCoords] = useState<RiskRewardBoxCoords | null>(null);
+
+  // Keep a ref of sortedData for coordinate computations
+  const sortedDataRef = useRef<CandlestickData<Time>[]>([]);
 
   useEffect(() => {
     const timer = setTimeout(() => {
@@ -61,11 +92,120 @@ export default function TradingViewChart({
           width: chartContainerRef.current.clientWidth,
           height: chartContainerRef.current.clientHeight,
         });
+        updateBoxCoordinates();
       }
-    }, 50);
+    }, 60);
     return () => clearTimeout(timer);
   }, [isFullscreen]);
 
+  // Compute Risk / Reward Green TP and Red SL Box coordinates
+  const updateBoxCoordinates = useCallback(() => {
+    if (!chartRef.current || !candleSeriesRef.current || !chartContainerRef.current) {
+      setBoxCoords(null);
+      return;
+    }
+
+    if (!showRRBoxes || !prediction) {
+      setBoxCoords(null);
+      return;
+    }
+
+    // Determine the active setup from all_model_setups or fallback to main prediction
+    const setups: ModelSetupItem[] | undefined = prediction.contributing_features?.all_model_setups;
+    let setup: {
+      direction: string;
+      entry_price: number;
+      stop_loss: number;
+      take_profit: number;
+      risk_reward_ratio: number;
+      model_name: string;
+    };
+
+    if (setups && setups.length > 0) {
+      const match = setups.find((s) => s.model_key === activeBoxModel) || setups[0];
+      setup = {
+        direction: match.direction,
+        entry_price: match.entry_price,
+        stop_loss: match.stop_loss,
+        take_profit: match.take_profit,
+        risk_reward_ratio: match.risk_reward_ratio,
+        model_name: match.model_name.split(':')[0],
+      };
+    } else {
+      setup = {
+        direction: prediction.direction,
+        entry_price: prediction.entry_reference_price,
+        stop_loss: prediction.stop_loss_reference,
+        take_profit: prediction.take_profit_reference,
+        risk_reward_ratio: prediction.risk_reward_ratio,
+        model_name: 'Model E',
+      };
+    }
+
+    const entryY = candleSeriesRef.current.priceToCoordinate(setup.entry_price);
+    const tpY = candleSeriesRef.current.priceToCoordinate(setup.take_profit);
+    const slY = candleSeriesRef.current.priceToCoordinate(setup.stop_loss);
+
+    if (entryY === null || tpY === null || slY === null) {
+      setBoxCoords(null);
+      return;
+    }
+
+    const containerW = chartContainerRef.current.clientWidth;
+    const rightScaleW = 65;
+    const availW = containerW - rightScaleW;
+
+    const data = sortedDataRef.current;
+    const lastCandle = data.length > 0 ? data[data.length - 1] : null;
+
+    let startX: number | null = null;
+    if (lastCandle) {
+      startX = chartRef.current.timeScale().timeToCoordinate(lastCandle.time as Time);
+    }
+
+    if (startX === null || startX < 50 || startX > availW - 80) {
+      startX = Math.max(availW - 240, 60);
+    }
+
+    const boxW = Math.max(availW - startX, 130);
+
+    let greenY = 0;
+    let greenH = 0;
+    let redY = 0;
+    let redH = 0;
+
+    if (setup.direction === 'SELL') {
+      // SELL: Stop Loss is above entry (lower pixel Y), Take Profit is below entry (higher pixel Y)
+      redY = Math.min(slY, entryY);
+      redH = Math.max(Math.abs(entryY - slY), 6);
+      greenY = Math.min(entryY, tpY);
+      greenH = Math.max(Math.abs(tpY - entryY), 6);
+    } else {
+      // BUY or WAIT default: Take Profit is above entry (lower pixel Y), Stop Loss is below (higher pixel Y)
+      greenY = Math.min(tpY, entryY);
+      greenH = Math.max(Math.abs(entryY - tpY), 6);
+      redY = Math.min(entryY, slY);
+      redH = Math.max(Math.abs(slY - entryY), 6);
+    }
+
+    setBoxCoords({
+      x: startX,
+      width: boxW,
+      greenY,
+      greenH,
+      redY,
+      redH,
+      entryY,
+      tpPrice: setup.take_profit,
+      slPrice: setup.stop_loss,
+      entryPrice: setup.entry_price,
+      dir: setup.direction,
+      rr: setup.risk_reward_ratio,
+      modelName: setup.model_name,
+    });
+  }, [showRRBoxes, prediction, activeBoxModel]);
+
+  // Chart setup
   useEffect(() => {
     if (!chartContainerRef.current) return;
 
@@ -133,12 +273,18 @@ export default function TradingViewChart({
     ema50SeriesRef.current = ema50Series;
     ema200SeriesRef.current = ema200Series;
 
+    // Hook visible range changes to update SVG box coordinates
+    chart.timeScale().subscribeVisibleLogicalRangeChange(() => {
+      updateBoxCoordinates();
+    });
+
     const handleResize = () => {
       if (chartContainerRef.current && chartRef.current) {
         chartRef.current.applyOptions({
           width: chartContainerRef.current.clientWidth,
           height: chartContainerRef.current.clientHeight,
         });
+        updateBoxCoordinates();
       }
     };
 
@@ -149,7 +295,7 @@ export default function TradingViewChart({
       window.removeEventListener('resize', handleResize);
       chart.remove();
     };
-  }, []);
+  }, [updateBoxCoordinates]);
 
   // Update chart data & apply anti-collision marker consolidation
   useEffect(() => {
@@ -168,6 +314,7 @@ export default function TradingViewChart({
     const uniqueMap = new Map<number, CandlestickData<Time>>();
     chartData.forEach((d) => uniqueMap.set(d.time as number, d));
     const sortedData = Array.from(uniqueMap.values()).sort((a, b) => (a.time as number) - (b.time as number));
+    sortedDataRef.current = sortedData;
 
     candleSeriesRef.current.setData(sortedData);
 
@@ -198,207 +345,237 @@ export default function TradingViewChart({
     // =========================================================================
     if (markerFilter === 'clean') {
       candleSeriesRef.current.setMarkers([]);
-      return;
+    } else {
+      interface BarSignalBundle {
+        timestamp: number;
+        aiDirection?: 'BUY' | 'SELL';
+        aiConfidence?: number;
+        ictSetup?: 'BULLISH' | 'BEARISH';
+        silverBullet?: 'BULLISH' | 'BEARISH';
+        choch?: 'BULLISH' | 'BEARISH';
+        bos?: 'BULLISH' | 'BEARISH';
+        swing?: { type: 'SH' | 'SL'; price: number };
+      }
+
+      const barMap = new Map<number, BarSignalBundle>();
+
+      const getBundle = (ts: number): BarSignalBundle => {
+        let b = barMap.get(ts);
+        if (!b) {
+          b = { timestamp: ts };
+          barMap.set(ts, b);
+        }
+        return b;
+      };
+
+      if (features?.smc) {
+        features.smc.swing_highs?.forEach((sh) => {
+          if (uniqueMap.has(sh.timestamp)) {
+            getBundle(sh.timestamp).swing = { type: 'SH', price: sh.price };
+          }
+        });
+        features.smc.swing_lows?.forEach((sl) => {
+          if (uniqueMap.has(sl.timestamp)) {
+            getBundle(sl.timestamp).swing = { type: 'SL', price: sl.price };
+          }
+        });
+        features.smc.recent_bos?.forEach((bos) => {
+          if (uniqueMap.has(bos.timestamp)) {
+            getBundle(bos.timestamp).bos = bos.direction as 'BULLISH' | 'BEARISH';
+          }
+        });
+        features.smc.recent_choch?.forEach((ch) => {
+          if (uniqueMap.has(ch.timestamp)) {
+            getBundle(ch.timestamp).choch = ch.direction as 'BULLISH' | 'BEARISH';
+          }
+        });
+        features.smc.ict_2022_setups?.forEach((ict) => {
+          if (uniqueMap.has(ict.timestamp)) {
+            getBundle(ict.timestamp).ictSetup = ict.type as 'BULLISH' | 'BEARISH';
+          }
+        });
+        features.smc.silver_bullet_setups?.forEach((sb) => {
+          if (uniqueMap.has(sb.timestamp)) {
+            getBundle(sb.timestamp).silverBullet = sb.type as 'BULLISH' | 'BEARISH';
+          }
+        });
+      }
+
+      if (prediction && prediction.direction !== 'WAIT') {
+        const latestTime = sortedData[sortedData.length - 1]?.time as number;
+        if (latestTime) {
+          const b = getBundle(latestTime);
+          b.aiDirection = prediction.direction as 'BUY' | 'SELL';
+          b.aiConfidence = prediction.confidence;
+        }
+      }
+
+      const finalMarkers: SeriesMarker<Time>[] = [];
+
+      barMap.forEach((bundle, ts) => {
+        const isBullish =
+          bundle.aiDirection === 'BUY' ||
+          bundle.ictSetup === 'BULLISH' ||
+          bundle.silverBullet === 'BULLISH' ||
+          bundle.choch === 'BULLISH' ||
+          bundle.bos === 'BULLISH' ||
+          bundle.swing?.type === 'SL';
+
+        if (markerFilter === 'triggers') {
+          if (bundle.aiDirection) {
+            finalMarkers.push({
+              time: ts as Time,
+              position: bundle.aiDirection === 'BUY' ? 'belowBar' : 'aboveBar',
+              color: bundle.aiDirection === 'BUY' ? '#10b981' : '#ef4444',
+              shape: bundle.aiDirection === 'BUY' ? 'arrowUp' : 'arrowDown',
+              text: `AI ${bundle.aiDirection} (${((bundle.aiConfidence || 0) * 100).toFixed(0)}%)`,
+            });
+          } else if (bundle.ictSetup) {
+            const isBuy = bundle.ictSetup === 'BULLISH';
+            finalMarkers.push({
+              time: ts as Time,
+              position: isBuy ? 'belowBar' : 'aboveBar',
+              color: '#eab308',
+              shape: isBuy ? 'arrowUp' : 'arrowDown',
+              text: `ICT 2022 ${isBuy ? 'BUY' : 'SELL'}`,
+            });
+          } else if (bundle.silverBullet) {
+            const isBuy = bundle.silverBullet === 'BULLISH';
+            finalMarkers.push({
+              time: ts as Time,
+              position: isBuy ? 'belowBar' : 'aboveBar',
+              color: '#c084fc',
+              shape: 'circle',
+              text: `Silver Bullet ${isBuy ? 'BUY' : 'SELL'}`,
+            });
+          }
+        } else if (markerFilter === 'structure') {
+          if (bundle.choch) {
+            const isBuy = bundle.choch === 'BULLISH';
+            finalMarkers.push({
+              time: ts as Time,
+              position: isBuy ? 'belowBar' : 'aboveBar',
+              color: '#f59e0b',
+              shape: 'square',
+              text: `CHoCH ${isBuy ? '▲' : '▼'}`,
+            });
+          } else if (bundle.bos) {
+            const isBuy = bundle.bos === 'BULLISH';
+            finalMarkers.push({
+              time: ts as Time,
+              position: isBuy ? 'belowBar' : 'aboveBar',
+              color: '#38bdf8',
+              shape: 'circle',
+              text: `BOS ${isBuy ? '▲' : '▼'}`,
+            });
+          } else if (bundle.swing) {
+            const isLow = bundle.swing.type === 'SL';
+            finalMarkers.push({
+              time: ts as Time,
+              position: isLow ? 'belowBar' : 'aboveBar',
+              color: isLow ? '#10b981' : '#ef4444',
+              shape: isLow ? 'arrowUp' : 'arrowDown',
+              text: `${bundle.swing.type} $${bundle.swing.price.toFixed(0)}`,
+            });
+          }
+        } else if (markerFilter === 'all') {
+          let label = '';
+          let shape: 'arrowUp' | 'arrowDown' | 'circle' | 'square' = isBullish ? 'arrowUp' : 'arrowDown';
+          let color = isBullish ? '#10b981' : '#ef4444';
+          let position: 'belowBar' | 'aboveBar' = isBullish ? 'belowBar' : 'aboveBar';
+
+          if (bundle.aiDirection) {
+            color = bundle.aiDirection === 'BUY' ? '#10b981' : '#ef4444';
+            label = `AI ${bundle.aiDirection}`;
+            if (bundle.ictSetup) label += ' + ICT';
+          } else if (bundle.ictSetup) {
+            color = '#eab308';
+            label = `ICT ${bundle.ictSetup === 'BULLISH' ? 'BUY' : 'SELL'}`;
+            if (bundle.choch) label += ' (CHoCH)';
+            else if (bundle.bos) label += ' (BOS)';
+          } else if (bundle.silverBullet) {
+            color = '#c084fc';
+            shape = 'circle';
+            label = `Silver Bullet ${bundle.silverBullet === 'BULLISH' ? 'BUY' : 'SELL'}`;
+          } else if (bundle.choch) {
+            color = '#f59e0b';
+            shape = 'square';
+            label = `CHoCH ${bundle.choch === 'BULLISH' ? '▲' : '▼'}`;
+          } else if (bundle.bos) {
+            color = '#38bdf8';
+            shape = 'circle';
+            label = `BOS ${bundle.bos === 'BULLISH' ? '▲' : '▼'}`;
+          } else if (bundle.swing) {
+            label = `${bundle.swing.type} $${bundle.swing.price.toFixed(0)}`;
+          }
+
+          if (label) {
+            finalMarkers.push({
+              time: ts as Time,
+              position,
+              color,
+              shape,
+              text: label,
+            });
+          }
+        }
+      });
+
+      finalMarkers.sort((a, b) => (a.time as number) - (b.time as number));
+      candleSeriesRef.current.setMarkers(finalMarkers);
     }
 
-    interface BarSignalBundle {
-      timestamp: number;
-      aiDirection?: 'BUY' | 'SELL';
-      aiConfidence?: number;
-      ictSetup?: 'BULLISH' | 'BEARISH';
-      silverBullet?: 'BULLISH' | 'BEARISH';
-      choch?: 'BULLISH' | 'BEARISH';
-      bos?: 'BULLISH' | 'BEARISH';
-      swing?: { type: 'SH' | 'SL'; price: number };
-    }
+    // =========================================================================
+    // PRICE LINES FOR TP, ENTRY, AND SL ON PRICE SCALE
+    // =========================================================================
+    if (candleSeriesRef.current) {
+      if (tpPriceLineRef.current) candleSeriesRef.current.removePriceLine(tpPriceLineRef.current);
+      if (entryPriceLineRef.current) candleSeriesRef.current.removePriceLine(entryPriceLineRef.current);
+      if (slPriceLineRef.current) candleSeriesRef.current.removePriceLine(slPriceLineRef.current);
+      tpPriceLineRef.current = null;
+      entryPriceLineRef.current = null;
+      slPriceLineRef.current = null;
 
-    const barMap = new Map<number, BarSignalBundle>();
+      if (showRRBoxes && prediction) {
+        const setups: ModelSetupItem[] | undefined = prediction.contributing_features?.all_model_setups;
+        const activeSetup = setups?.find((s) => s.model_key === activeBoxModel) || {
+          entry_price: prediction.entry_reference_price,
+          stop_loss: prediction.stop_loss_reference,
+          take_profit: prediction.take_profit_reference,
+          risk_reward_ratio: prediction.risk_reward_ratio,
+        };
 
-    const getBundle = (ts: number): BarSignalBundle => {
-      let b = barMap.get(ts);
-      if (!b) {
-        b = { timestamp: ts };
-        barMap.set(ts, b);
-      }
-      return b;
-    };
+        tpPriceLineRef.current = candleSeriesRef.current.createPriceLine({
+          price: activeSetup.take_profit,
+          color: '#10b981',
+          lineWidth: 2,
+          lineStyle: 0,
+          axisLabelVisible: true,
+          title: `TP $${activeSetup.take_profit.toFixed(2)}`,
+        });
 
-    if (features?.smc) {
-      // Collect Swings
-      features.smc.swing_highs?.forEach((sh) => {
-        if (uniqueMap.has(sh.timestamp)) {
-          getBundle(sh.timestamp).swing = { type: 'SH', price: sh.price };
-        }
-      });
-      features.smc.swing_lows?.forEach((sl) => {
-        if (uniqueMap.has(sl.timestamp)) {
-          getBundle(sl.timestamp).swing = { type: 'SL', price: sl.price };
-        }
-      });
+        entryPriceLineRef.current = candleSeriesRef.current.createPriceLine({
+          price: activeSetup.entry_price,
+          color: '#f59e0b',
+          lineWidth: 2,
+          lineStyle: 2,
+          axisLabelVisible: true,
+          title: `ENTRY $${activeSetup.entry_price.toFixed(2)}`,
+        });
 
-      // Collect Structure Breaks
-      features.smc.recent_bos?.forEach((bos) => {
-        if (uniqueMap.has(bos.timestamp)) {
-          getBundle(bos.timestamp).bos = bos.direction as 'BULLISH' | 'BEARISH';
-        }
-      });
-
-      // Collect Character Shifts
-      features.smc.recent_choch?.forEach((ch) => {
-        if (uniqueMap.has(ch.timestamp)) {
-          getBundle(ch.timestamp).choch = ch.direction as 'BULLISH' | 'BEARISH';
-        }
-      });
-
-      // Collect ICT Setups
-      features.smc.ict_2022_setups?.forEach((ict) => {
-        if (uniqueMap.has(ict.timestamp)) {
-          getBundle(ict.timestamp).ictSetup = ict.type as 'BULLISH' | 'BEARISH';
-        }
-      });
-
-      // Collect Silver Bullet
-      features.smc.silver_bullet_setups?.forEach((sb) => {
-        if (uniqueMap.has(sb.timestamp)) {
-          getBundle(sb.timestamp).silverBullet = sb.type as 'BULLISH' | 'BEARISH';
-        }
-      });
-    }
-
-    // Collect Latest AI Prediction
-    if (prediction && prediction.direction !== 'WAIT') {
-      const latestTime = sortedData[sortedData.length - 1]?.time as number;
-      if (latestTime) {
-        const b = getBundle(latestTime);
-        b.aiDirection = prediction.direction as 'BUY' | 'SELL';
-        b.aiConfidence = prediction.confidence;
+        slPriceLineRef.current = candleSeriesRef.current.createPriceLine({
+          price: activeSetup.stop_loss,
+          color: '#ef4444',
+          lineWidth: 2,
+          lineStyle: 0,
+          axisLabelVisible: true,
+          title: `SL $${activeSetup.stop_loss.toFixed(2)}`,
+        });
       }
     }
 
-    // Resolve exactly ONE clean consolidated marker per bar
-    const finalMarkers: SeriesMarker<Time>[] = [];
-
-    barMap.forEach((bundle, ts) => {
-      const isBullish =
-        bundle.aiDirection === 'BUY' ||
-        bundle.ictSetup === 'BULLISH' ||
-        bundle.silverBullet === 'BULLISH' ||
-        bundle.choch === 'BULLISH' ||
-        bundle.bos === 'BULLISH' ||
-        bundle.swing?.type === 'SL';
-
-      // 1. FILTER: Triggers Only (Actionable ICT & AI setups)
-      if (markerFilter === 'triggers') {
-        if (bundle.aiDirection) {
-          finalMarkers.push({
-            time: ts as Time,
-            position: bundle.aiDirection === 'BUY' ? 'belowBar' : 'aboveBar',
-            color: bundle.aiDirection === 'BUY' ? '#10b981' : '#ef4444',
-            shape: bundle.aiDirection === 'BUY' ? 'arrowUp' : 'arrowDown',
-            text: `AI ${bundle.aiDirection} (${((bundle.aiConfidence || 0) * 100).toFixed(0)}%)`,
-          });
-        } else if (bundle.ictSetup) {
-          const isBuy = bundle.ictSetup === 'BULLISH';
-          finalMarkers.push({
-            time: ts as Time,
-            position: isBuy ? 'belowBar' : 'aboveBar',
-            color: '#eab308',
-            shape: isBuy ? 'arrowUp' : 'arrowDown',
-            text: `ICT 2022 ${isBuy ? 'BUY' : 'SELL'}`,
-          });
-        } else if (bundle.silverBullet) {
-          const isBuy = bundle.silverBullet === 'BULLISH';
-          finalMarkers.push({
-            time: ts as Time,
-            position: isBuy ? 'belowBar' : 'aboveBar',
-            color: '#c084fc',
-            shape: 'circle',
-            text: `Silver Bullet ${isBuy ? 'BUY' : 'SELL'}`,
-          });
-        }
-        return;
-      }
-
-      // 2. FILTER: Structure Only (CHoCH, BOS, Key Swings)
-      if (markerFilter === 'structure') {
-        if (bundle.choch) {
-          const isBuy = bundle.choch === 'BULLISH';
-          finalMarkers.push({
-            time: ts as Time,
-            position: isBuy ? 'belowBar' : 'aboveBar',
-            color: '#f59e0b',
-            shape: 'square',
-            text: `CHoCH ${isBuy ? '▲' : '▼'}`,
-          });
-        } else if (bundle.bos) {
-          const isBuy = bundle.bos === 'BULLISH';
-          finalMarkers.push({
-            time: ts as Time,
-            position: isBuy ? 'belowBar' : 'aboveBar',
-            color: '#38bdf8',
-            shape: 'circle',
-            text: `BOS ${isBuy ? '▲' : '▼'}`,
-          });
-        } else if (bundle.swing) {
-          const isLow = bundle.swing.type === 'SL';
-          finalMarkers.push({
-            time: ts as Time,
-            position: isLow ? 'belowBar' : 'aboveBar',
-            color: isLow ? '#10b981' : '#ef4444',
-            shape: isLow ? 'arrowUp' : 'arrowDown',
-            text: `${bundle.swing.type} $${bundle.swing.price.toFixed(0)}`,
-          });
-        }
-        return;
-      }
-
-      // 3. FILTER: All Signals (Merged cleanly with secondary tags to prevent overlap)
-      if (markerFilter === 'all') {
-        let label = '';
-        let shape: 'arrowUp' | 'arrowDown' | 'circle' | 'square' = isBullish ? 'arrowUp' : 'arrowDown';
-        let color = isBullish ? '#10b981' : '#ef4444';
-        let position: 'belowBar' | 'aboveBar' = isBullish ? 'belowBar' : 'aboveBar';
-
-        if (bundle.aiDirection) {
-          color = bundle.aiDirection === 'BUY' ? '#10b981' : '#ef4444';
-          label = `AI ${bundle.aiDirection}`;
-          if (bundle.ictSetup) label += ' + ICT';
-        } else if (bundle.ictSetup) {
-          color = '#eab308';
-          label = `ICT ${bundle.ictSetup === 'BULLISH' ? 'BUY' : 'SELL'}`;
-          if (bundle.choch) label += ' (CHoCH)';
-          else if (bundle.bos) label += ' (BOS)';
-        } else if (bundle.silverBullet) {
-          color = '#c084fc';
-          shape = 'circle';
-          label = `Silver Bullet ${bundle.silverBullet === 'BULLISH' ? 'BUY' : 'SELL'}`;
-        } else if (bundle.choch) {
-          color = '#f59e0b';
-          shape = 'square';
-          label = `CHoCH ${bundle.choch === 'BULLISH' ? '▲' : '▼'}`;
-        } else if (bundle.bos) {
-          color = '#38bdf8';
-          shape = 'circle';
-          label = `BOS ${bundle.bos === 'BULLISH' ? '▲' : '▼'}`;
-        } else if (bundle.swing) {
-          label = `${bundle.swing.type} $${bundle.swing.price.toFixed(0)}`;
-        }
-
-        if (label) {
-          finalMarkers.push({
-            time: ts as Time,
-            position,
-            color,
-            shape,
-            text: label,
-          });
-        }
-      }
-    });
-
-    finalMarkers.sort((a, b) => (a.time as number) - (b.time as number));
-    candleSeriesRef.current.setMarkers(finalMarkers);
-  }, [candles, showEMAs, markerFilter, features, prediction]);
+    updateBoxCoordinates();
+  }, [candles, showEMAs, markerFilter, showRRBoxes, activeBoxModel, features, prediction, updateBoxCoordinates]);
 
   const lastCandleDate =
     candles.length > 0
@@ -482,6 +659,39 @@ export default function TradingViewChart({
 
         {/* Clean Display Filters & Tooling */}
         <div className="flex items-center space-x-3 text-xs">
+          {/* Risk/Reward TP/SL Box Toggle & Active Model Selector */}
+          <div className="flex items-center space-x-1.5 bg-dark-900 border border-dark-700 rounded px-2 py-1">
+            <Target className="w-3.5 h-3.5 text-bull-400" />
+            <label className="flex items-center space-x-1 cursor-pointer text-gray-200 font-semibold text-[11px]">
+              <input
+                type="checkbox"
+                checked={showRRBoxes}
+                onChange={(e) => setShowRRBoxes(e.target.checked)}
+                className="rounded bg-dark-700 border-dark-600 text-gold-500 focus:ring-0 mr-1"
+              />
+              <span>TP/SL Box:</span>
+            </label>
+            <select
+              value={activeBoxModel}
+              onChange={(e) => setActiveBoxModel(e.target.value as BoxModelType)}
+              disabled={!showRRBoxes}
+              className="bg-transparent text-gold-400 font-bold text-[11px] outline-none cursor-pointer disabled:opacity-40"
+            >
+              <option value="ensemble" className="bg-dark-900 text-white">
+                Model E (Ensemble)
+              </option>
+              <option value="smc_ict" className="bg-dark-900 text-white">
+                Model B (SMC/ICT 2.5R)
+              </option>
+              <option value="technical" className="bg-dark-900 text-white">
+                Model A (Tech 2.0R)
+              </option>
+              <option value="price_action" className="bg-dark-900 text-white">
+                Model D (PA Wick Extreme)
+              </option>
+            </select>
+          </div>
+
           {/* Anti-Stacking Marker Filter Selector */}
           <div className="flex items-center space-x-1.5 bg-dark-900 border border-dark-700 rounded px-2 py-1">
             <Filter className="w-3 h-3 text-gold-400" />
@@ -648,8 +858,83 @@ export default function TradingViewChart({
         </div>
       )}
 
-      {/* Candlestick Chart Viewport */}
-      <div ref={chartContainerRef} className="flex-1 w-full min-h-[420px]" />
+      {/* Candlestick Chart Viewport with Visual TP/SL Rectangles */}
+      <div className="relative flex-1 w-full min-h-[420px]">
+        <div ref={chartContainerRef} className="w-full h-full" />
+
+        {/* ========================================================================= */}
+        {/* VISUAL SHADED RISK/REWARD RECTANGLES (GREEN TP BOX & RED SL BOX)          */}
+        {/* ========================================================================= */}
+        {showRRBoxes && boxCoords && (
+          <svg className="absolute inset-0 pointer-events-none w-full h-full z-10 overflow-hidden">
+            {/* Green Take Profit Rectangle */}
+            <rect
+              x={boxCoords.x}
+              y={boxCoords.greenY}
+              width={boxCoords.width}
+              height={boxCoords.greenH}
+              fill="rgba(16, 185, 129, 0.20)"
+              stroke="#10b981"
+              strokeWidth="1.5"
+              strokeDasharray="4 2"
+              rx="2"
+            />
+            {/* Green TP Banner Tag */}
+            <g transform={`translate(${boxCoords.x + 8}, ${Math.max(boxCoords.greenY + 16, 18)})`}>
+              <rect x="0" y="-12" width="168" height="18" rx="3" fill="#064e3b" stroke="#10b981" strokeWidth="1" />
+              <text x="6" y="1" fill="#34d399" fontSize="11" fontWeight="bold" fontFamily="monospace">
+                🎯 TP ${boxCoords.tpPrice.toFixed(2)} (+{boxCoords.rr}R)
+              </text>
+            </g>
+
+            {/* Red Stop Loss Rectangle */}
+            <rect
+              x={boxCoords.x}
+              y={boxCoords.redY}
+              width={boxCoords.width}
+              height={boxCoords.redH}
+              fill="rgba(239, 68, 68, 0.20)"
+              stroke="#ef4444"
+              strokeWidth="1.5"
+              strokeDasharray="4 2"
+              rx="2"
+            />
+            {/* Red SL Banner Tag */}
+            <g transform={`translate(${boxCoords.x + 8}, ${Math.min(boxCoords.redY + boxCoords.redH - 6, boxCoords.redY + 16)})`}>
+              <rect x="0" y="-12" width="168" height="18" rx="3" fill="#7f1d1d" stroke="#ef4444" strokeWidth="1" />
+              <text x="6" y="1" fill="#f87171" fontSize="11" fontWeight="bold" fontFamily="monospace">
+                🛡️ SL ${boxCoords.slPrice.toFixed(2)} (-1.0R)
+              </text>
+            </g>
+
+            {/* Entry Divider Line */}
+            <line
+              x1={boxCoords.x}
+              y1={boxCoords.entryY}
+              x2={boxCoords.x + boxCoords.width}
+              y2={boxCoords.entryY}
+              stroke="#f59e0b"
+              strokeWidth="2"
+              strokeDasharray="4 3"
+            />
+            {/* Entry Banner Tag */}
+            <g transform={`translate(${boxCoords.x + 8}, ${boxCoords.entryY + 4})`}>
+              <rect x="0" y="-10" width="144" height="18" rx="3" fill="#78350f" stroke="#f59e0b" strokeWidth="1" />
+              <text x="6" y="3" fill="#fde68a" fontSize="11" fontWeight="bold" fontFamily="monospace">
+                ⚡ ENTRY ${boxCoords.entryPrice.toFixed(2)}
+              </text>
+            </g>
+
+            {/* Model Name Floating Badge */}
+            <g transform={`translate(${boxCoords.x + boxCoords.width - 95}, ${Math.min(boxCoords.greenY, boxCoords.redY) - 6})`}>
+              <rect x="0" y="-10" width="90" height="15" rx="3" fill="#1e293b" stroke="#475569" strokeWidth="1" />
+              <text x="5" y="1" fill="#94a3b8" fontSize="9" fontWeight="bold" fontFamily="sans-serif">
+                {boxCoords.modelName}
+              </text>
+            </g>
+          </svg>
+        )}
+      </div>
     </div>
   );
 }

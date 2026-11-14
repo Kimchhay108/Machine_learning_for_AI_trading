@@ -71,6 +71,20 @@ export interface MarketFeaturesResponse {
   smc: SMCStructure;
 }
 
+export interface ModelSetupItem {
+  model_key: string;
+  model_name: string;
+  direction: 'BUY' | 'SELL' | 'WAIT';
+  entry_price: number;
+  stop_loss: number;
+  take_profit: number;
+  risk_reward_ratio: number;
+  risk_distance_usd: number;
+  confidence_pct: number;
+  why_explanation: string;
+  key_drivers: string[];
+}
+
 export interface PredictionResponse {
   instrument: string;
   timeframe: string;
@@ -90,6 +104,7 @@ export interface PredictionResponse {
     top_technical_drivers?: string[];
     top_smc_drivers?: string[];
     active_ict_setups?: string[];
+    all_model_setups?: ModelSetupItem[];
     submodel_agreement?: {
       tech_prediction?: number;
       smc_prediction?: number;

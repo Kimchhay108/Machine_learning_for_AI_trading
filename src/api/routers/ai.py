@@ -43,7 +43,11 @@ def get_prediction(
     version: Optional[str] = Query(None, description="Model version (defaults to active)"),
 ) -> PredictionResponse:
     """Generate live AI trading prediction and dynamic ATR-based risk levels for the latest candle."""
-    feat_path = settings.FEATURES_DIR / instrument.lower() / "m5_features.parquet"
+    tf_clean = (timeframe or "M5").lower().strip()
+    feat_path = settings.FEATURES_DIR / instrument.lower() / f"{tf_clean}_features.parquet"
+    if not feat_path.exists():
+        feat_path = settings.FEATURES_DIR / instrument.lower() / "m5_features.parquet"
+
     if not feat_path.exists():
         raise HTTPException(
             status_code=404,

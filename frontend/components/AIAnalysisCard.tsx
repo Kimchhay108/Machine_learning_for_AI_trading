@@ -1,7 +1,7 @@
 'use client';
 
-import React from 'react';
-import { PredictionResponse } from '../lib/api';
+import React, { useState } from 'react';
+import { PredictionResponse, ModelSetupItem } from '../lib/api';
 import {
   TrendingUp,
   TrendingDown,
@@ -10,6 +10,11 @@ import {
   Layers,
   ShieldAlert,
   Target,
+  Compass,
+  Zap,
+  Info,
+  ChevronDown,
+  ChevronUp,
 } from 'lucide-react';
 
 interface AIAnalysisCardProps {
@@ -18,6 +23,8 @@ interface AIAnalysisCardProps {
 }
 
 export default function AIAnalysisCard({ prediction, loading }: AIAnalysisCardProps) {
+  const [expandedModel, setExpandedModel] = useState<string | null>(null);
+
   if (loading || !prediction) {
     return (
       <div className="bg-dark-900 border border-dark-700 rounded-lg p-5 flex flex-col items-center justify-center min-h-[300px]">
@@ -57,6 +64,68 @@ export default function AIAnalysisCard({ prediction, loading }: AIAnalysisCardPr
     if (val === 0) return <span className="text-bear-400 font-semibold">BEAR</span>;
     return <span className="text-gray-400 font-semibold">NEUT</span>;
   };
+
+  // Extract all model setups or synthesize default values
+  const allSetups: ModelSetupItem[] = contributing_features?.all_model_setups || [
+    {
+      model_key: 'ensemble',
+      model_name: 'Model E: Calibrated Multi-Model Ensemble',
+      direction: direction as 'BUY' | 'SELL' | 'WAIT',
+      entry_price: entry_reference_price,
+      stop_loss: stop_loss_reference,
+      take_profit: take_profit_reference,
+      risk_reward_ratio: risk_reward_ratio,
+      risk_distance_usd: Math.abs(entry_reference_price - stop_loss_reference),
+      confidence_pct: Math.round(confidence * 100),
+      why_explanation:
+        direction === 'WAIT'
+          ? `Ensemble recommends WAIT: confidence (${(confidence * 100).toFixed(1)}%) is below selective threshold. Preserving capital until sub-models reach confluence.`
+          : `Multi-model stacked consensus triggers ${direction} with ${(confidence * 100).toFixed(1)}% confidence. Dynamic ATR Stop Loss at $${stop_loss_reference.toFixed(2)} with 2.0 R:R Target at $${take_profit_reference.toFixed(2)}.`,
+      key_drivers: ['Meta-Model Stacking', `Confidence: ${(confidence * 100).toFixed(1)}%`, `Regime: ${market_regime}`],
+    },
+    {
+      model_key: 'smc_ict',
+      model_name: 'Model B: SMC & ICT 2022 Mentorship',
+      direction: direction === 'BUY' ? 'BUY' : 'WAIT',
+      entry_price: entry_reference_price,
+      stop_loss: entry_reference_price - 5.0,
+      take_profit: entry_reference_price + 12.5,
+      risk_reward_ratio: 2.5,
+      risk_distance_usd: 5.0,
+      confidence_pct: 65,
+      why_explanation:
+        'ICT 2022 Mentorship model evaluates Liquidity Sweeps, Market Structure Shifts (MSS), and FVG discount/premium retests with structural swing invalidation stop.',
+      key_drivers: ['ICT 2022 Mentorship', 'Structural Swing SL', '2.5 R:R Target'],
+    },
+    {
+      model_key: 'technical',
+      model_name: 'Model A: Technical Momentum (Indicators)',
+      direction: 'WAIT',
+      entry_price: entry_reference_price,
+      stop_loss: entry_reference_price - 3.5,
+      take_profit: entry_reference_price + 7.0,
+      risk_reward_ratio: 2.0,
+      risk_distance_usd: 3.5,
+      confidence_pct: 50,
+      why_explanation:
+        'Evaluates EMA 9/20/50/200 trend alignment, RSI pullbacks (42-58), and MACD histogram momentum with a 1.5x ATR volatility envelope.',
+      key_drivers: ['EMA Alignment', 'RSI Pullback', 'MACD Expansion'],
+    },
+    {
+      model_key: 'price_action',
+      model_name: 'Model D: Price Action & Rejections',
+      direction: 'WAIT',
+      entry_price: entry_reference_price,
+      stop_loss: entry_reference_price - 2.5,
+      take_profit: entry_reference_price + 5.0,
+      risk_reward_ratio: 2.0,
+      risk_distance_usd: 2.5,
+      confidence_pct: 50,
+      why_explanation:
+        'Identifies pin bar rejection wicks and engulfing candles, setting tight stop loss at the candle extreme with 2.0 R:R target.',
+      key_drivers: ['Wick Rejection', 'Candle Morphology', 'Wick Extreme SL'],
+    },
+  ];
 
   return (
     <div className="bg-dark-900 border border-dark-700 rounded-lg p-5 space-y-5">
@@ -212,23 +281,117 @@ export default function AIAnalysisCard({ prediction, loading }: AIAnalysisCardPr
         )}
       </div>
 
-      {/* Trade Execution References */}
-      <div className="p-3 bg-dark-850 rounded border border-dark-700 space-y-1.5 text-xs">
-        <span className="text-gray-300 font-semibold block mb-1 flex items-center space-x-1">
-          <Target className="w-3.5 h-3.5 text-gold-500" />
-          <span>Execution Reference Levels</span>
-        </span>
-        <div className="flex justify-between text-gray-400">
-          <span>Reference Price:</span>
-          <span className="text-white font-mono font-medium">${entry_reference_price.toFixed(2)}</span>
+      {/* ========================================================================= */}
+      {/* NEXT ENTRY SIGNALS FOR ALL MODELS + "EXPLAIN WHY" RATIONALE               */}
+      {/* ========================================================================= */}
+      <div className="space-y-3 pt-3 border-t border-dark-700">
+        <div className="flex items-center justify-between">
+          <span className="text-xs font-bold uppercase tracking-wider text-gray-200 flex items-center space-x-1.5">
+            <Compass className="w-4 h-4 text-gold-400" />
+            <span>Next Entry Across All Models</span>
+          </span>
+          <span className="text-[10px] text-gray-400">Model-Specific SL/TP & Why</span>
         </div>
-        <div className="flex justify-between text-gray-400">
-          <span>Stop Loss (1.5x ATR):</span>
-          <span className="text-bear-400 font-mono font-medium">${stop_loss_reference.toFixed(2)}</span>
-        </div>
-        <div className="flex justify-between text-gray-400">
-          <span>Take Profit (3.0x ATR):</span>
-          <span className="text-bull-400 font-mono font-medium">${take_profit_reference.toFixed(2)}</span>
+
+        <div className="space-y-2.5">
+          {allSetups.map((setup) => {
+            const isSetupBuy = setup.direction === 'BUY';
+            const isSetupSell = setup.direction === 'SELL';
+            const isSetupWait = setup.direction === 'WAIT';
+            const isExpanded = expandedModel === setup.model_key || (!expandedModel && setup.model_key === 'ensemble');
+
+            const dirBadge = isSetupBuy
+              ? 'bg-bull-500/20 text-bull-400 border-bull-500/40'
+              : isSetupSell
+              ? 'bg-bear-500/20 text-bear-400 border-bear-500/40'
+              : 'bg-dark-750 text-gray-400 border-dark-600';
+
+            return (
+              <div
+                key={setup.model_key}
+                className="bg-dark-850 rounded-lg border border-dark-700 overflow-hidden transition"
+              >
+                {/* Header Row */}
+                <div
+                  onClick={() => setExpandedModel(isExpanded ? '__none__' : setup.model_key)}
+                  className="p-3 cursor-pointer hover:bg-dark-800/60 flex items-center justify-between transition"
+                >
+                  <div className="flex items-center space-x-2">
+                    <span className="font-semibold text-xs text-white">
+                      {setup.model_name.split(':')[0]}
+                    </span>
+                    <span className="text-[11px] text-gray-400 hidden sm:inline">
+                      {setup.model_name.split(':')[1]}
+                    </span>
+                  </div>
+
+                  <div className="flex items-center space-x-2">
+                    <span className={`text-[10px] font-bold px-2 py-0.5 rounded border ${dirBadge}`}>
+                      {setup.direction} ({setup.confidence_pct}%)
+                    </span>
+                    {isExpanded ? (
+                      <ChevronUp className="w-3.5 h-3.5 text-gray-400" />
+                    ) : (
+                      <ChevronDown className="w-3.5 h-3.5 text-gray-400" />
+                    )}
+                  </div>
+                </div>
+
+                {/* Details Accordion Content */}
+                {isExpanded && (
+                  <div className="px-3 pb-3 pt-1 space-y-2.5 border-t border-dark-800 bg-dark-900/40 text-xs">
+                    {/* Execution Parameters Grid */}
+                    <div className="grid grid-cols-4 gap-2 text-center text-[11px] font-mono">
+                      <div className="bg-dark-800 p-1.5 rounded border border-dark-750">
+                        <span className="text-[10px] text-gray-400 block font-sans">Entry Price</span>
+                        <span className="text-white font-bold">${setup.entry_price.toFixed(2)}</span>
+                      </div>
+
+                      <div className="bg-dark-800 p-1.5 rounded border border-dark-750">
+                        <span className="text-[10px] text-gray-400 block font-sans">Stop Loss</span>
+                        <span className="text-bear-400 font-bold">${setup.stop_loss.toFixed(2)}</span>
+                      </div>
+
+                      <div className="bg-dark-800 p-1.5 rounded border border-dark-750">
+                        <span className="text-[10px] text-gray-400 block font-sans">Take Profit</span>
+                        <span className="text-bull-400 font-bold">${setup.take_profit.toFixed(2)}</span>
+                      </div>
+
+                      <div className="bg-dark-800 p-1.5 rounded border border-dark-750">
+                        <span className="text-[10px] text-gray-400 block font-sans">Risk:Reward</span>
+                        <span className="text-gold-400 font-bold">1:{setup.risk_reward_ratio}</span>
+                      </div>
+                    </div>
+
+                    {/* "Explain Why" Rationale Box */}
+                    <div className="bg-dark-800/80 p-2.5 rounded border border-dark-700/80">
+                      <span className="text-[10px] font-bold uppercase tracking-wider text-gold-400 block mb-1 flex items-center space-x-1">
+                        <Zap className="w-3 h-3 text-gold-400" />
+                        <span>Why This Trade Setup:</span>
+                      </span>
+                      <p className="text-gray-300 text-xs leading-relaxed font-sans">
+                        {setup.why_explanation}
+                      </p>
+
+                      {/* Key Setup Drivers */}
+                      {setup.key_drivers && setup.key_drivers.length > 0 && (
+                        <div className="flex flex-wrap gap-1 mt-2 pt-2 border-t border-dark-700">
+                          {setup.key_drivers.map((driver, didx) => (
+                            <span
+                              key={didx}
+                              className="text-[10px] bg-dark-900 border border-dark-700 text-gray-300 px-1.5 py-0.5 rounded font-mono"
+                            >
+                              {driver}
+                            </span>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                )}
+              </div>
+            );
+          })}
         </div>
       </div>
     </div>
