@@ -83,6 +83,8 @@ class PaperTradingEngine:
         partial_tp_r: float = 1.0,
         partial_tp_ratio: float = 0.50,
         only_killzones: bool = False,
+        filter_high_impact_news: bool = True,
+        news_blackout_mins: int = 30,
     ):
         self.initial_balance = initial_balance
         self.spread_usd = spread_usd
@@ -95,6 +97,8 @@ class PaperTradingEngine:
         self.partial_tp_r = partial_tp_r
         self.partial_tp_ratio = partial_tp_ratio
         self.only_killzones = only_killzones
+        self.filter_high_impact_news = filter_high_impact_news
+        self.news_blackout_mins = news_blackout_mins
 
         self.balance: float = initial_balance
         self.equity: float = initial_balance
@@ -255,6 +259,25 @@ class PaperTradingEngine:
                 if not in_kz:
                     self.last_candle_timestamp = ts
                     return {"action": "WAIT", "message": "Filtered out: Outside London / NY Killzones"}
+
+            # High-Impact News Blackout filter
+            if self.filter_high_impact_news:
+                try:
+                    from src.models.news_filter import get_news_filter
+                    nf = get_news_filter()
+                    dt_utc = pd.to_datetime(ts // 1000 if ts > 10_000_000_000 else ts, unit="s", utc=True).to_pydatetime()
+                    is_blackout, active_evt, delta_mins = nf.is_blackout_active(
+                        dt_utc,
+                        buffer_before_mins=self.news_blackout_mins,
+                        buffer_after_mins=self.news_blackout_mins,
+                    )
+                    if is_blackout and active_evt:
+                        self.last_candle_timestamp = ts
+                        msg = f"News Blackout Active: {active_evt.title} ({delta_mins:+.0f}m from release). Trading halted."
+                        logger.warning(msg)
+                        return {"action": "WAIT", "message": msg}
+                except Exception as e:
+                    logger.warning(f"Error checking news blackout in paper trader: {e}")
 
             risk_usd = self.balance * self.risk_pct_per_trade
 

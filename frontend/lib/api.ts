@@ -305,6 +305,36 @@ export async function triggerRetrain(
   return res.json();
 }
 
+export interface NewsEventItem {
+  id: string;
+  title: string;
+  currency: string;
+  impact: string;
+  event_time_utc: string;
+  category: string;
+  description: string;
+  blackout_before_mins: number;
+  blackout_after_mins: number;
+  minutes_until_event?: number;
+  is_blackout_now: boolean;
+}
+
+export interface NewsCalendarStatus {
+  is_blackout_active: boolean;
+  active_event?: string;
+  minutes_delta_from_event?: number;
+  minutes_until_next_event?: number;
+  next_event_title?: string;
+  next_event_time_utc?: string;
+  upcoming_events: NewsEventItem[];
+}
+
+export async function fetchNewsCalendarStatus(limit: number = 8, bufferMins: number = 30): Promise<NewsCalendarStatus> {
+  const res = await fetch(`${API_BASE}/api/market/news-calendar?limit=${limit}&buffer_mins=${bufferMins}`);
+  if (!res.ok) throw new Error(`News calendar fetch failed: ${res.statusText}`);
+  return res.json();
+}
+
 export async function runBacktest(params: {
   version?: string;
   model_type?: string;
@@ -322,6 +352,8 @@ export async function runBacktest(params: {
   only_killzones?: boolean;
   use_h1_gatekeeper?: boolean;
   learn_from_mistakes?: boolean;
+  filter_high_impact_news?: boolean;
+  news_blackout_mins?: number;
   target_rr?: number;
 }): Promise<BacktestResponse> {
   const res = await fetch(`${API_BASE}/api/backtest/run`, {
@@ -349,6 +381,8 @@ export async function runBacktestComparison(params?: {
   only_killzones?: boolean;
   use_h1_gatekeeper?: boolean;
   learn_from_mistakes?: boolean;
+  filter_high_impact_news?: boolean;
+  news_blackout_mins?: number;
   target_rr?: number;
 }): Promise<BacktestComparisonResponse> {
   const res = await fetch(`${API_BASE}/api/backtest/compare`, {

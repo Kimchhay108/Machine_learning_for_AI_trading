@@ -125,7 +125,33 @@ class BacktestRequest(BaseModel):
     only_killzones: bool = Field(default=True, description="Execute trades strictly during London (07:00-10:00) & NY (12:00-15:00) Killzones")
     use_h1_gatekeeper: bool = Field(default=True, description="Enforce H1 Macro Trend alignment: Price > H1 200 EMA for BUY, Price < H1 200 EMA for SELL")
     learn_from_mistakes: bool = Field(default=True, description="AI Failure Memory: Vetoes setups matching historical loss fingerprints (low momentum chop, climax exhaustion, volatility spikes)")
+    filter_high_impact_news: bool = Field(default=True, description="News Blackout: Abstain from trading ±30m around high-impact USD events (NFP, CPI, FOMC, GDP, etc.)")
+    news_blackout_mins: int = Field(default=30, description="Minutes before and after high-impact news release to block trade entries")
     target_rr: Optional[float] = Field(default=None, description="Optional target Risk:Reward ratio (e.g. 1.2, 1.5, 2.0)")
+
+
+class NewsEventItemSchema(BaseModel):
+    id: str
+    title: str
+    currency: str
+    impact: str
+    event_time_utc: str
+    category: str
+    description: str
+    blackout_before_mins: int
+    blackout_after_mins: int
+    minutes_until_event: Optional[int] = None
+    is_blackout_now: bool = False
+
+
+class NewsCalendarStatusResponse(BaseModel):
+    is_blackout_active: bool
+    active_event: Optional[str] = None
+    minutes_delta_from_event: Optional[float] = None
+    minutes_until_next_event: Optional[int] = None
+    next_event_title: Optional[str] = None
+    next_event_time_utc: Optional[str] = None
+    upcoming_events: List[NewsEventItemSchema]
 
 
 class ModelComparisonItem(BaseModel):

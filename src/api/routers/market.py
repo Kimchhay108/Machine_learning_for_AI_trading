@@ -248,3 +248,40 @@ def get_market_features(
         indicators=indicators,
         smc=smc,
     )
+
+
+@router.get("/news-calendar")
+def get_economic_news_calendar(
+    limit: int = Query(10, ge=1, le=50, description="Maximum upcoming events to return"),
+    buffer_mins: int = Query(30, ge=5, le=120, description="Blackout buffer in minutes before/after event"),
+):
+    """Retrieve live High-Impact USD economic news calendar, blackout status, and countdown to next release."""
+    from datetime import datetime, timezone
+    from src.models.news_filter import get_news_filter
+
+    nf = get_news_filter()
+    now_utc = datetime.now(timezone.utc)
+    is_blackout, active_evt, delta_mins = nf.is_blackout_active(
+        now_utc, buffer_before_mins=buffer_mins, buffer_after_mins=buffer_mins
+    )
+
+    upcoming_raw = nf.get_upcoming_events(from_time=now_utc, limit=limit)
+
+    minutes_until_next = None
+    next_title = None
+    next_time = None
+    if upcoming_raw:
+        first_upcoming = upcoming_raw[0]
+        minutes_until_next = first_upcoming.get("minutes_until_event")
+        next_title = first_upcoming.get("title")
+        next_time = first_upcoming.get("event_time_utc")
+
+    return {
+        "is_blackout_active": is_blackout,
+        "active_event": active_evt.title if active_evt else None,
+        "minutes_delta_from_event": delta_mins,
+        "minutes_until_next_event": minutes_until_next,
+        "next_event_title": next_title,
+        "next_event_time_utc": next_time,
+        "upcoming_events": upcoming_raw,
+    }

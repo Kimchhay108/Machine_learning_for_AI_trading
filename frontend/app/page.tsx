@@ -6,10 +6,12 @@ import {
   MarketFeaturesResponse,
   PredictionResponse,
   MarketStatus,
+  NewsCalendarStatus,
   fetchCandles,
   fetchMarketFeatures,
   fetchAIPrediction,
   fetchMarketStatus,
+  fetchNewsCalendarStatus,
 } from '../lib/api';
 import TradingViewChart from '../components/TradingViewChart';
 import AIAnalysisCard from '../components/AIAnalysisCard';
@@ -51,22 +53,25 @@ export default function DashboardPage() {
   const [features, setFeatures] = useState<MarketFeaturesResponse | null>(null);
   const [prediction, setPrediction] = useState<PredictionResponse | null>(null);
   const [marketStatus, setMarketStatus] = useState<MarketStatus | null>(null);
+  const [newsStatus, setNewsStatus] = useState<NewsCalendarStatus | null>(null);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
 
   const loadData = async (tf: string = timeframe) => {
     setRefreshing(true);
     try {
-      const [cRes, fRes, pRes, mRes] = await Promise.all([
+      const [cRes, fRes, pRes, mRes, nRes] = await Promise.all([
         fetchCandles('XAUUSD', tf, 500),
         fetchMarketFeatures('XAUUSD', tf, 100),
         fetchAIPrediction('XAUUSD', tf),
         fetchMarketStatus('XAUUSD').catch(() => null),
+        fetchNewsCalendarStatus(5).catch(() => null),
       ]);
       setCandles(cRes.candles);
       setFeatures(fRes);
       setPrediction(pRes);
       if (mRes) setMarketStatus(mRes);
+      if (nRes) setNewsStatus(nRes);
     } catch (err) {
       console.error('Error loading dashboard data:', err);
     } finally {
@@ -152,6 +157,33 @@ export default function DashboardPage() {
                   {features.regime.regime_label} ({features.regime.session})
                 </span>
               </div>
+            )}
+
+            {/* High-Impact Economic News Blackout Status */}
+            {newsStatus && (
+              newsStatus.is_blackout_active ? (
+                <div className="px-3 py-1.5 rounded-lg border text-xs flex items-center space-x-2 bg-rose-500/15 border-rose-500/40 text-rose-300 animate-pulse">
+                  <span className="w-2 h-2 rounded-full bg-rose-500" />
+                  <div>
+                    <span className="font-bold tracking-wide block">NEWS BLACKOUT ACTIVE</span>
+                    <span className="text-[10px] text-rose-200 block truncate max-w-[180px]" title={newsStatus.active_event}>
+                      {newsStatus.active_event} (Halted)
+                    </span>
+                  </div>
+                </div>
+              ) : (
+                <div className="px-3 py-1.5 rounded-lg border text-xs hidden lg:flex items-center space-x-2 bg-dark-800 border-dark-700 text-gray-300">
+                  <span className="w-2 h-2 rounded-full bg-emerald-400" />
+                  <div>
+                    <span className="font-bold tracking-wide block text-[11px] text-emerald-400">NEWS CLEAR</span>
+                    <span className="text-[10px] text-gray-400 block truncate max-w-[190px]" title={newsStatus.next_event_title}>
+                      {newsStatus.next_event_title
+                        ? `Next: ${newsStatus.next_event_title.split('(')[0]}`
+                        : 'Tier-1 News Clear'}
+                    </span>
+                  </div>
+                </div>
+              )
             )}
           </div>
         </div>

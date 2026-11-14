@@ -42,6 +42,8 @@ def generate_strategy_signals_and_levels(
     target_rr: Optional[float] = None,
     use_h1_gatekeeper: bool = True,
     learn_from_mistakes: bool = True,
+    filter_high_impact_news: bool = True,
+    news_blackout_mins: int = 30,
 ) -> Tuple[List[str], List[float], List[float], str, str]:
     """Generate model-tailored signals, Entry, Stop-Loss, and Take-Profit price levels.
 
@@ -53,6 +55,7 @@ def generate_strategy_signals_and_levels(
     - Session Filter: Restricts entries to London (07:00-10:00 UTC) & NY (12:00-15:00 UTC) Killzones when only_killzones is enabled.
     - H1 Macro Trend Gatekeeper: Price > H1 200 EMA & H1 Trend >= 0 for BUY; Price < H1 200 EMA & H1 Trend <= 0 for SELL.
     - AI Failure Memory: Vetoes entries matching historical loss fingerprints (low momentum chop, climax exhaustion, volatility expansion).
+    - High-Impact News Blackout: Keeps out of XAUUSD during major USD economic announcements (NFP, CPI, FOMC, GDP).
     - Adaptive R:R: Scales Take Profit based on target_rr (e.g. 1.2, 1.5, 2.0).
     """
     close = test_df["close"].to_numpy()
@@ -66,13 +69,30 @@ def generate_strategy_signals_and_levels(
         atr = np.full(n, 2.0)
     atr = np.where(np.isnan(atr) | (atr <= 0), 2.0, atr)
 
-    # Check Killzone filter (London Open: 07:00-10:00 UTC, NY AM: 12:00-15:00 UTC)
-    if "timestamp" in test_df.columns and only_killzones:
-        dt = pd.to_datetime(test_df["timestamp"], unit="s")
-        hours = dt.dt.hour.to_numpy()
-        in_killzones = ((hours >= 7) & (hours <= 10)) | ((hours >= 12) & (hours <= 15))
+    # Time-based filters (Killzones & High-Impact News Blackouts)
+    if "timestamp" in test_df.columns and len(test_df) > 0:
+        first_ts = test_df["timestamp"].iloc[0]
+        unit = "ms" if first_ts > 1e11 else "s"
+        dt = pd.to_datetime(test_df["timestamp"], unit=unit, utc=True)
+        if only_killzones:
+            hours = dt.dt.hour.to_numpy()
+            in_killzones = ((hours >= 7) & (hours <= 10)) | ((hours >= 12) & (hours <= 15))
+        else:
+            in_killzones = np.ones(n, dtype=bool)
+
+        if filter_high_impact_news:
+            from src.models.news_filter import get_news_filter
+            nf = get_news_filter()
+            news_blackout = nf.get_blackout_mask(
+                test_df["timestamp"],
+                buffer_before_mins=news_blackout_mins,
+                buffer_after_mins=news_blackout_mins,
+            )
+        else:
+            news_blackout = np.zeros(n, dtype=bool)
     else:
         in_killzones = np.ones(n, dtype=bool)
+        news_blackout = np.zeros(n, dtype=bool)
 
     # Check H1 Macro Trend alignment (Gatekeeper: 200 EMA + Structure)
     h1_ema = test_df.get("h1_ema_200", test_df.get("m15_ema_200", test_df.get("ema_200", None)))
@@ -135,8 +155,8 @@ def generate_strategy_signals_and_levels(
             pb, pl = prob_b[i, 0], prob_b[i, 2]
             cp, ca = close[i], atr[i]
 
-            is_buy = in_killzones[i] and h1_bull[i] and mistake_ok_buy[i] and ((ict_bull[i] and pl > 0.40) or (pl >= threshold and pl > pb))
-            is_sell = in_killzones[i] and h1_bear[i] and mistake_ok_sell[i] and ((ict_bear[i] and pb > 0.40) or (pb >= threshold and pb > pl))
+            is_buy = in_killzones[i] and (not news_blackout[i]) and h1_bull[i] and mistake_ok_buy[i] and ((ict_bull[i] and pl > 0.40) or (pl >= threshold and pl > pb))
+            is_sell = in_killzones[i] and (not news_blackout[i]) and h1_bear[i] and mistake_ok_sell[i] and ((ict_bear[i] and pb > 0.40) or (pb >= threshold and pb > pl))
 
             if is_buy and not is_sell:
                 signals.append("BUY")
@@ -180,8 +200,8 @@ def generate_strategy_signals_and_levels(
             pb, pl = prob_a[i, 0], prob_a[i, 2]
             cp, ca = close[i], atr[i]
 
-            is_buy = in_killzones[i] and h1_bull[i] and mistake_ok_buy[i] and ((pl > 0.40 and pl > pb and (ema_align[i] >= 1 or rsi_os[i] == 1)) or (pl >= threshold and pl > pb))
-            is_sell = in_killzones[i] and h1_bear[i] and mistake_ok_sell[i] and ((pb > 0.40 and pb > pl and (ema_align[i] <= -1 or rsi_ob[i] == 1)) or (pb >= threshold and pb > pl))
+            is_buy = in_killzones[i] and (not news_blackout[i]) and h1_bull[i] and mistake_ok_buy[i] and ((pl > 0.40 and pl > pb and (ema_align[i] >= 1 or rsi_os[i] == 1)) or (pl >= threshold and pl > pb))
+            is_sell = in_killzones[i] and (not news_blackout[i]) and h1_bear[i] and mistake_ok_sell[i] and ((pb > 0.40 and pb > pl and (ema_align[i] <= -1 or rsi_ob[i] == 1)) or (pb >= threshold and pb > pl))
 
             if is_buy and not is_sell:
                 signals.append("BUY")
@@ -218,8 +238,8 @@ def generate_strategy_signals_and_levels(
             pb, pl = prob_d[i, 0], prob_d[i, 2]
             cp, ca, ch, cl = close[i], atr[i], high[i], low[i]
 
-            is_buy = in_killzones[i] and h1_bull[i] and mistake_ok_buy[i] and ((pl > 0.40 and pl > pb and (pin_bull[i] == 1 or engulf_bull[i] == 1 or lower_wick[i] >= 0.40)) or (pl >= threshold and pl > pb))
-            is_sell = in_killzones[i] and h1_bear[i] and mistake_ok_sell[i] and ((pb > 0.40 and pb > pl and (pin_bear[i] == 1 or engulf_bear[i] == 1 or upper_wick[i] >= 0.40)) or (pb >= threshold and pb > pl))
+            is_buy = in_killzones[i] and (not news_blackout[i]) and h1_bull[i] and mistake_ok_buy[i] and ((pl > 0.40 and pl > pb and (pin_bull[i] == 1 or engulf_bull[i] == 1 or lower_wick[i] >= 0.40)) or (pl >= threshold and pl > pb))
+            is_sell = in_killzones[i] and (not news_blackout[i]) and h1_bear[i] and mistake_ok_sell[i] and ((pb > 0.40 and pb > pl and (pin_bear[i] == 1 or engulf_bear[i] == 1 or upper_wick[i] >= 0.40)) or (pb >= threshold and pb > pl))
 
             if is_buy and not is_sell:
                 signals.append("BUY")
@@ -259,8 +279,8 @@ def generate_strategy_signals_and_levels(
             cp, ca = close[i], atr[i]
             sig = decisions[i]
 
-            is_buy = in_killzones[i] and h1_bull[i] and mistake_ok_buy[i] and (sig == "BUY")
-            is_sell = in_killzones[i] and h1_bear[i] and mistake_ok_sell[i] and (sig == "SELL")
+            is_buy = in_killzones[i] and (not news_blackout[i]) and h1_bull[i] and mistake_ok_buy[i] and (sig == "BUY")
+            is_sell = in_killzones[i] and (not news_blackout[i]) and h1_bear[i] and mistake_ok_sell[i] and (sig == "SELL")
 
             if is_buy and not is_sell:
                 signals.append("BUY")
@@ -388,6 +408,8 @@ def run_backtest(req: BacktestRequest) -> BacktestResponse:
         target_rr=getattr(req, "target_rr", None),
         use_h1_gatekeeper=getattr(req, "use_h1_gatekeeper", True),
         learn_from_mistakes=getattr(req, "learn_from_mistakes", True),
+        filter_high_impact_news=getattr(req, "filter_high_impact_news", True),
+        news_blackout_mins=getattr(req, "news_blackout_mins", 30),
     )
 
     backtester = RealisticBacktestEngine(
@@ -465,6 +487,8 @@ def _execute_comparison(req: BacktestRequest) -> BacktestComparisonResponse:
             target_rr=getattr(req, "target_rr", None),
             use_h1_gatekeeper=getattr(req, "use_h1_gatekeeper", True),
             learn_from_mistakes=getattr(req, "learn_from_mistakes", True),
+            filter_high_impact_news=getattr(req, "filter_high_impact_news", True),
+            news_blackout_mins=getattr(req, "news_blackout_mins", 30),
         )
 
         backtester = RealisticBacktestEngine(

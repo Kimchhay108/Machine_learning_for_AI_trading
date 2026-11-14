@@ -52,6 +52,7 @@ export default function BacktestLab() {
   const [onlyKillzones, setOnlyKillzones] = useState(true);
   const [useH1Gatekeeper, setUseH1Gatekeeper] = useState(true);
   const [learnFromMistakes, setLearnFromMistakes] = useState(true);
+  const [filterNews, setFilterNews] = useState(true);
   const [enablePartialTP, setEnablePartialTP] = useState(true);
   const [targetRR, setTargetRR] = useState<number | undefined>(undefined);
 
@@ -150,6 +151,8 @@ export default function BacktestLab() {
         only_killzones: onlyKillzones,
         use_h1_gatekeeper: useH1Gatekeeper,
         learn_from_mistakes: learnFromMistakes,
+        filter_high_impact_news: filterNews,
+        news_blackout_mins: 30,
         target_rr: targetRR,
       });
       setResults(res);
@@ -178,6 +181,8 @@ export default function BacktestLab() {
         only_killzones: onlyKillzones,
         use_h1_gatekeeper: useH1Gatekeeper,
         learn_from_mistakes: learnFromMistakes,
+        filter_high_impact_news: filterNews,
+        news_blackout_mins: 30,
         target_rr: targetRR,
       });
       setComparison(compRes);
@@ -401,6 +406,17 @@ export default function BacktestLab() {
             />
             <span className="font-semibold text-amber-400">🧠 AI Failure Memory & Mistake Filter</span>
             <span className="text-[10px] text-gray-400">(Vetoes loss patterns: Chop, Spikes, Exhaustion)</span>
+          </label>
+
+          <label className="flex items-center space-x-2 text-gray-300 cursor-pointer select-none">
+            <input
+              type="checkbox"
+              checked={filterNews}
+              onChange={(e) => setFilterNews(e.target.checked)}
+              className="rounded bg-dark-800 border-dark-600 text-gold-500 focus:ring-0 w-3.5 h-3.5"
+            />
+            <span className="font-semibold text-rose-400">📰 High-Impact News Blackout Filter</span>
+            <span className="text-[10px] text-gray-400">(Keep out ±30m of NFP, CPI, FOMC, GDP)</span>
           </label>
         </div>
 
@@ -763,6 +779,16 @@ export default function BacktestLab() {
                     <span className="font-semibold text-gray-200">Volatility Expansion Spike Filter:</span>
                     <p className="text-gray-400 text-[10px]">
                       Abstains when ATR surges &gt; 1.4x rolling 20-period baseline to avoid high-spread slippage traps.
+                    </p>
+                  </div>
+                </div>
+
+                <div className="p-2 rounded bg-dark-800/80 border border-dark-700/60 flex items-start space-x-2">
+                  <span className="text-emerald-400 font-bold">✓</span>
+                  <div>
+                    <span className="font-semibold text-gray-200">Tier-1 High-Impact News Blackout Window:</span>
+                    <p className="text-gray-400 text-[10px]">
+                      Abstains from trading ±30 minutes around US NFP, CPI inflation, and FOMC rate decisions to avoid extreme slippage.
                     </p>
                   </div>
                 </div>

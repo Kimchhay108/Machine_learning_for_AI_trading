@@ -61,6 +61,11 @@ class TradeForensicsEngine:
     """Diagnoses trade losses, attributes failure mechanisms, and generates learned rules."""
 
     CAUSE_DEFINITIONS = {
+        "NEWS_RELEASE_WHIPSAW": {
+            "title": "High-Impact News Release Whipsaw",
+            "explanation": "Position entered inside a Tier-1 USD news blackout window (NFP/CPI/FOMC/GDP); violent spread surge and slippage triggered stop-loss.",
+            "lesson": "Keep out of XAUUSD ±30 minutes around high-impact economic news releases.",
+        },
         "VOLATILITY_EXPANSION_SPIKE": {
             "title": "Volatility Expansion Spike",
             "explanation": "ATR expanded significantly above rolling baseline, causing noise to breach stop-loss before target was reached.",
@@ -99,6 +104,8 @@ class TradeForensicsEngine:
         rolling_atr: float = 2.0,
     ) -> TradeForensicsItem:
         """Diagnose a single losing trade by cross-referencing entry candle features."""
+        from datetime import datetime, timezone
+
         direction = getattr(trade, "direction", "BUY")
         regime = str(row.get("market_regime", "Unknown"))
         adx = float(row.get("adx_14", 25.0))
@@ -106,8 +113,27 @@ class TradeForensicsEngine:
         atr = float(row.get("atr_14", 2.0))
         atr_ratio = (atr / rolling_atr) if rolling_atr > 0 else 1.0
 
+        # Check if entry occurred during high-impact news blackout window
+        entry_ts = getattr(trade, "entry_time", 0)
+        is_news_blackout = False
+        active_news_title = None
+        if entry_ts > 0:
+            try:
+                from src.models.news_filter import get_news_filter
+                nf = get_news_filter()
+                scale = 1000.0 if entry_ts > 1e11 else 1.0
+                dt_utc = datetime.fromtimestamp(entry_ts / scale, tz=timezone.utc)
+                is_blackout, evt, _ = nf.is_blackout_active(dt_utc)
+                if is_blackout and evt:
+                    is_news_blackout = True
+                    active_news_title = evt.title
+            except Exception:
+                pass
+
         # Attribution hierarchy
-        if direction == "BUY" and ("Bearish" in regime or "Ranging" in regime):
+        if is_news_blackout:
+            cause = "NEWS_RELEASE_WHIPSAW"
+        elif direction == "BUY" and ("Bearish" in regime or "Ranging" in regime):
             cause = "REGIME_OPPOSITION"
         elif direction == "SELL" and ("Bullish" in regime or "Ranging" in regime):
             cause = "REGIME_OPPOSITION"
@@ -126,6 +152,10 @@ class TradeForensicsEngine:
             "explanation": "Stop loss touched due to intrabar market noise.",
             "lesson": "Improve stop placement and confluence confirmation.",
         })
+
+        explanation = info["explanation"]
+        if is_news_blackout and active_news_title:
+            explanation = f"Entered during {active_news_title} release window; high spread spike breached stop loss."
 
         return TradeForensicsItem(
             entry_time=int(getattr(trade, "entry_time", 0)),
