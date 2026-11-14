@@ -207,10 +207,10 @@ export default function DashboardPage() {
       </nav>
 
       {/* Main Content Area */}
-      <main className="flex-1 p-6 max-w-7xl w-full mx-auto">
+      <main className="flex-1 px-4 py-3 w-full">
         {/* Market Closure / Historical Replay Notice Banner */}
         {marketStatus && !marketStatus.is_market_open && (
-          <div className="bg-dark-900 border border-dark-700 border-l-4 border-l-gold-500 px-4 py-3 rounded-lg flex items-center justify-between text-xs text-gray-300 mb-6 shadow-sm">
+          <div className="bg-dark-900 border border-dark-700 border-l-4 border-l-gold-500 px-4 py-2.5 rounded-lg flex items-center justify-between text-xs text-gray-300 mb-4 shadow-sm">
             <div className="flex items-center space-x-3">
               <ShieldAlert className="w-5 h-5 text-gold-500 shrink-0" />
               <div>
@@ -218,7 +218,7 @@ export default function DashboardPage() {
                   Weekend Market Notice — Global Gold OTC / Spot Market is Currently Closed
                 </span>
                 <span className="text-gray-400">
-                  Global Gold trading opens Sunday 22:00 UTC and closes Friday 21:00 UTC. The chart and models are currently operating in <strong>Historical Research & Backtest Mode</strong> displaying your verified May 2024 dataset ({candles.length.toLocaleString()} M5 candles).
+                  Global Gold trading opens Sunday 22:00 UTC and closes Friday 21:00 UTC. The platform is operating in <strong>Historical Research Mode</strong> displaying your verified historical dataset ({candles.length.toLocaleString()} M5 candles up to Friday close ${currentPrice.toFixed(2)}).
                 </span>
               </div>
             </div>
@@ -229,8 +229,8 @@ export default function DashboardPage() {
         )}
 
         {activeTab === 'overview' && (
-          <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-            <div className="lg:col-span-2 space-y-4">
+          <div className="grid grid-cols-1 xl:grid-cols-4 gap-4">
+            <div className="xl:col-span-3 min-h-[680px] h-[calc(100vh-190px)]">
               <TradingViewChart
                 candles={candles}
                 timeframe={timeframe}
@@ -239,14 +239,14 @@ export default function DashboardPage() {
                 prediction={prediction}
               />
             </div>
-            <div className="space-y-4">
+            <div className="xl:col-span-1 space-y-4 overflow-y-auto">
               <AIAnalysisCard prediction={prediction} loading={loading} />
             </div>
           </div>
         )}
 
         {activeTab === 'chart' && (
-          <div className="h-[750px]">
+          <div className="h-[calc(100vh-140px)] w-full">
             <TradingViewChart
               candles={candles}
               timeframe={timeframe}
@@ -258,7 +258,7 @@ export default function DashboardPage() {
         )}
 
         {activeTab === 'analysis' && (
-          <div className="max-w-2xl mx-auto">
+          <div className="max-w-4xl mx-auto py-4">
             <AIAnalysisCard prediction={prediction} loading={loading} />
           </div>
         )}

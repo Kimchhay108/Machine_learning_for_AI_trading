@@ -11,6 +11,7 @@ import {
   SeriesMarker,
 } from 'lightweight-charts';
 import { Candle, MarketFeaturesResponse, PredictionResponse } from '../lib/api';
+import { Maximize2, Minimize2 } from 'lucide-react';
 
 interface TradingViewChartProps {
   candles: Candle[];
@@ -38,6 +39,19 @@ export default function TradingViewChart({
   const [showEMAs, setShowEMAs] = useState(true);
   const [showSMC, setShowSMC] = useState(true);
   const [showAILevels, setShowAILevels] = useState(true);
+  const [isFullscreen, setIsFullscreen] = useState(false);
+
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      if (chartContainerRef.current && chartRef.current) {
+        chartRef.current.applyOptions({
+          width: chartContainerRef.current.clientWidth,
+          height: chartContainerRef.current.clientHeight,
+        });
+      }
+    }, 50);
+    return () => clearTimeout(timer);
+  }, [isFullscreen]);
 
   useEffect(() => {
     if (!chartContainerRef.current) return;
@@ -244,7 +258,11 @@ export default function TradingViewChart({
       : '';
 
   return (
-    <div className="flex flex-col h-full bg-dark-900 border border-dark-700 rounded-lg overflow-hidden">
+    <div
+      className={`flex flex-col bg-dark-900 border border-dark-700 rounded-lg overflow-hidden transition-all ${
+        isFullscreen ? 'fixed inset-0 z-[100] w-screen h-screen rounded-none' : 'w-full h-full'
+      }`}
+    >
       {/* Chart Toolbar */}
       <div className="flex items-center justify-between px-4 py-2 border-b border-dark-700 bg-dark-850">
         <div className="flex items-center space-x-2">
@@ -273,7 +291,7 @@ export default function TradingViewChart({
           ))}
         </div>
 
-        {/* Overlay Layer Toggles */}
+        {/* Overlay Layer Toggles & Fullscreen */}
         <div className="flex items-center space-x-3 text-xs">
           <label className="flex items-center space-x-1.5 cursor-pointer text-gray-300">
             <input
@@ -282,7 +300,7 @@ export default function TradingViewChart({
               onChange={(e) => setShowEMAs(e.target.checked)}
               className="rounded bg-dark-700 border-dark-600 text-gold-500 focus:ring-0"
             />
-            <span>EMAs (20/50/200)</span>
+            <span>EMAs</span>
           </label>
 
           <label className="flex items-center space-x-1.5 cursor-pointer text-gray-300">
@@ -292,7 +310,7 @@ export default function TradingViewChart({
               onChange={(e) => setShowSMC(e.target.checked)}
               className="rounded bg-dark-700 border-dark-600 text-gold-500 focus:ring-0"
             />
-            <span>SMC (BOS/CHoCH/Swings)</span>
+            <span>SMC Levels</span>
           </label>
 
           <label className="flex items-center space-x-1.5 cursor-pointer text-gray-300">
@@ -304,6 +322,18 @@ export default function TradingViewChart({
             />
             <span>AI Signals</span>
           </label>
+
+          <div className="h-4 w-px bg-dark-700 mx-1" />
+
+          {/* Full Screen Toggle Button */}
+          <button
+            onClick={() => setIsFullscreen(!isFullscreen)}
+            className="p-1 px-2.5 rounded bg-dark-700 hover:bg-dark-600 text-gray-200 hover:text-white border border-dark-600 transition flex items-center space-x-1"
+            title={isFullscreen ? 'Exit Full Screen' : 'Expand to Full Screen'}
+          >
+            {isFullscreen ? <Minimize2 className="w-3.5 h-3.5" /> : <Maximize2 className="w-3.5 h-3.5" />}
+            <span className="text-[11px] font-medium">{isFullscreen ? 'Exit' : 'Full Screen'}</span>
+          </button>
         </div>
       </div>
 
@@ -332,7 +362,7 @@ export default function TradingViewChart({
       )}
 
       {/* Chart Canvas Area */}
-      <div ref={chartContainerRef} className="flex-1 w-full min-h-[460px]" />
+      <div ref={chartContainerRef} className="flex-1 w-full min-h-[580px]" />
     </div>
   );
 }
