@@ -37,6 +37,7 @@ def generate_strategy_signals_and_levels(
     slippage: float,
     only_killzones: bool = True,
     target_rr: Optional[float] = None,
+    use_h1_gatekeeper: bool = True,
 ) -> Tuple[List[str], List[float], List[float], str, str]:
     """Generate model-tailored signals, Entry, Stop-Loss, and Take-Profit price levels.
 
@@ -46,6 +47,7 @@ def generate_strategy_signals_and_levels(
     - Model A (Technical): EMA Trend & RSI Momentum + Volatility Envelope Stop (1.5x ATR).
     - Model D (Price Action): Candle Rejection Wicks & Pin Bars + Candle Wick Extreme High/Low Stop ($0.50 buffer).
     - Session Filter: Restricts entries to London (07:00-10:00 UTC) & NY (12:00-15:00 UTC) Killzones when only_killzones is enabled.
+    - H1 Macro Trend Gatekeeper: Price > H1 200 EMA & H1 Trend >= 0 for BUY; Price < H1 200 EMA & H1 Trend <= 0 for SELL.
     - Adaptive R:R: Scales Take Profit based on target_rr (e.g. 1.2, 1.5, 2.0).
     """
     close = test_df["close"].to_numpy()
@@ -66,6 +68,18 @@ def generate_strategy_signals_and_levels(
         in_killzones = ((hours >= 7) & (hours <= 10)) | ((hours >= 12) & (hours <= 15))
     else:
         in_killzones = np.ones(n, dtype=bool)
+
+    # Check H1 Macro Trend alignment (Gatekeeper: 200 EMA + Structure)
+    h1_ema = test_df.get("h1_ema_200", test_df.get("m15_ema_200", test_df.get("ema_200", None)))
+    h1_trend = test_df.get("h1_market_structure_trend", test_df.get("m15_market_structure_trend", test_df.get("market_structure_trend", None)))
+    if use_h1_gatekeeper and h1_ema is not None and h1_trend is not None:
+        ema_arr = h1_ema.to_numpy()
+        trend_arr = h1_trend.to_numpy()
+        h1_bull = (close > ema_arr) & (trend_arr >= 0)
+        h1_bear = (close < ema_arr) & (trend_arr <= 0)
+    else:
+        h1_bull = np.ones(n, dtype=bool)
+        h1_bear = np.ones(n, dtype=bool)
 
     signals: List[str] = []
     sl_levels: List[float] = []
@@ -99,8 +113,8 @@ def generate_strategy_signals_and_levels(
             pb, pl = prob_b[i, 0], prob_b[i, 2]
             cp, ca = close[i], atr[i]
 
-            is_buy = in_killzones[i] and ((ict_bull[i] and pl > 0.40) or (pl >= threshold and pl > pb))
-            is_sell = in_killzones[i] and ((ict_bear[i] and pb > 0.40) or (pb >= threshold and pb > pl))
+            is_buy = in_killzones[i] and h1_bull[i] and ((ict_bull[i] and pl > 0.40) or (pl >= threshold and pl > pb))
+            is_sell = in_killzones[i] and h1_bear[i] and ((ict_bear[i] and pb > 0.40) or (pb >= threshold and pb > pl))
 
             if is_buy and not is_sell:
                 signals.append("BUY")
@@ -136,19 +150,23 @@ def generate_strategy_signals_and_levels(
         sl_tp_logic = f"EMA Trend & RSI Pullbacks | SL: 1.5x ATR Volatility Envelope, TP: {eff_rr} R:R Target"
 
         prob_a = engine.ensemble.model_a.predict_proba(test_df)
+        ema_align = test_df.get("ema_alignment", pd.Series(0, index=test_df.index)).to_numpy()
+        rsi_os = test_df.get("rsi_14_oversold", pd.Series(0, index=test_df.index)).to_numpy()
+        rsi_ob = test_df.get("rsi_14_overbought", pd.Series(0, index=test_df.index)).to_numpy()
+
         for i in range(n):
             pb, pl = prob_a[i, 0], prob_a[i, 2]
             cp, ca = close[i], atr[i]
 
-            is_buy = in_killzones[i] and (pl >= threshold and pl > pb)
-            is_sell = in_killzones[i] and (pb >= threshold and pb > pl)
+            is_buy = in_killzones[i] and h1_bull[i] and ((pl > 0.40 and pl > pb and (ema_align[i] >= 1 or rsi_os[i] == 1)) or (pl >= threshold and pl > pb))
+            is_sell = in_killzones[i] and h1_bear[i] and ((pb > 0.40 and pb > pl and (ema_align[i] <= -1 or rsi_ob[i] == 1)) or (pb >= threshold and pb > pl))
 
-            if is_buy:
+            if is_buy and not is_sell:
                 signals.append("BUY")
                 ep = cp + spread + slippage
                 sl = ep - (1.5 * ca)
                 tp = ep + (eff_rr * 1.5 * ca)
-            elif is_sell:
+            elif is_sell and not is_buy:
                 signals.append("SELL")
                 ep = cp - slippage
                 sl = ep + (1.5 * ca)
@@ -167,14 +185,21 @@ def generate_strategy_signals_and_levels(
         sl_tp_logic = f"Candle Wick Extremes | SL: Candle High/Low Extreme (-$0.50 buffer), TP: {eff_rr} R:R Target"
 
         prob_d = engine.ensemble.model_d.predict_proba(test_df)
+        pin_bull = test_df.get("pin_bar_bullish", pd.Series(0, index=test_df.index)).to_numpy()
+        pin_bear = test_df.get("pin_bar_bearish", pd.Series(0, index=test_df.index)).to_numpy()
+        engulf_bull = test_df.get("engulfing_bullish", pd.Series(0, index=test_df.index)).to_numpy()
+        engulf_bear = test_df.get("engulfing_bearish", pd.Series(0, index=test_df.index)).to_numpy()
+        lower_wick = test_df.get("lower_wick_ratio", pd.Series(0.0, index=test_df.index)).to_numpy()
+        upper_wick = test_df.get("upper_wick_ratio", pd.Series(0.0, index=test_df.index)).to_numpy()
+
         for i in range(n):
             pb, pl = prob_d[i, 0], prob_d[i, 2]
             cp, ca, ch, cl = close[i], atr[i], high[i], low[i]
 
-            is_buy = in_killzones[i] and (pl >= threshold and pl > pb)
-            is_sell = in_killzones[i] and (pb >= threshold and pb > pl)
+            is_buy = in_killzones[i] and h1_bull[i] and ((pl > 0.40 and pl > pb and (pin_bull[i] == 1 or engulf_bull[i] == 1 or lower_wick[i] >= 0.40)) or (pl >= threshold and pl > pb))
+            is_sell = in_killzones[i] and h1_bear[i] and ((pb > 0.40 and pb > pl and (pin_bear[i] == 1 or engulf_bear[i] == 1 or upper_wick[i] >= 0.40)) or (pb >= threshold and pb > pl))
 
-            if is_buy:
+            if is_buy and not is_sell:
                 signals.append("BUY")
                 ep = cp + spread + slippage
                 if 0.40 <= (ep - cl) <= 3.0 * ca:
@@ -183,7 +208,7 @@ def generate_strategy_signals_and_levels(
                     sl = ep - (1.2 * ca)
                 risk = max(ep - sl, 0.40)
                 tp = ep + (eff_rr * risk)
-            elif is_sell:
+            elif is_sell and not is_buy:
                 signals.append("SELL")
                 ep = cp - slippage
                 if 0.40 <= (ch - ep) <= 3.0 * ca:
@@ -212,16 +237,19 @@ def generate_strategy_signals_and_levels(
             cp, ca = close[i], atr[i]
             sig = decisions[i]
 
-            if in_killzones[i] and sig in ["BUY", "SELL"]:
-                signals.append(sig)
-                if sig == "BUY":
-                    ep = cp + spread + slippage
-                    sl = ep - (1.5 * ca)
-                    tp = ep + (eff_rr * 1.5 * ca)
-                else:
-                    ep = cp - slippage
-                    sl = ep + (1.5 * ca)
-                    tp = ep - (eff_rr * 1.5 * ca)
+            is_buy = in_killzones[i] and h1_bull[i] and (sig == "BUY")
+            is_sell = in_killzones[i] and h1_bear[i] and (sig == "SELL")
+
+            if is_buy and not is_sell:
+                signals.append("BUY")
+                ep = cp + spread + slippage
+                sl = ep - (1.5 * ca)
+                tp = ep + (eff_rr * 1.5 * ca)
+            elif is_sell and not is_buy:
+                signals.append("SELL")
+                ep = cp - slippage
+                sl = ep + (1.5 * ca)
+                tp = ep - (eff_rr * 1.5 * ca)
             else:
                 signals.append("WAIT")
                 sl = cp - (1.5 * ca)
@@ -309,6 +337,7 @@ def run_backtest(req: BacktestRequest) -> BacktestResponse:
         slippage=req.slippage,
         only_killzones=getattr(req, "only_killzones", True),
         target_rr=getattr(req, "target_rr", None),
+        use_h1_gatekeeper=getattr(req, "use_h1_gatekeeper", True),
     )
 
     backtester = RealisticBacktestEngine(
@@ -319,6 +348,8 @@ def run_backtest(req: BacktestRequest) -> BacktestResponse:
         max_holding_bars=req.max_holding_bars,
         enable_breakeven=getattr(req, "enable_breakeven", True),
         breakeven_r=getattr(req, "breakeven_r", 1.0),
+        enable_partial_tp=getattr(req, "enable_partial_tp", True),
+        partial_tp_r=getattr(req, "partial_tp_r", 1.0),
     )
 
     result = backtester.run(test_df, signals=signals, sl_levels=sl_levels, tp_levels=tp_levels)
@@ -382,6 +413,7 @@ def _execute_comparison(req: BacktestRequest) -> BacktestComparisonResponse:
             slippage=req.slippage,
             only_killzones=getattr(req, "only_killzones", True),
             target_rr=getattr(req, "target_rr", None),
+            use_h1_gatekeeper=getattr(req, "use_h1_gatekeeper", True),
         )
 
         backtester = RealisticBacktestEngine(
@@ -392,6 +424,8 @@ def _execute_comparison(req: BacktestRequest) -> BacktestComparisonResponse:
             max_holding_bars=req.max_holding_bars,
             enable_breakeven=getattr(req, "enable_breakeven", True),
             breakeven_r=getattr(req, "breakeven_r", 1.0),
+            enable_partial_tp=getattr(req, "enable_partial_tp", True),
+            partial_tp_r=getattr(req, "partial_tp_r", 1.0),
         )
 
         res = backtester.run(test_df, signals=signals, sl_levels=sl_levels, tp_levels=tp_levels)

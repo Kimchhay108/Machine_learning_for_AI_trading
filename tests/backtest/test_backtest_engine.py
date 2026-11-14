@@ -69,3 +69,32 @@ class TestRealisticBacktestEngine:
         assert res.total_trades == 1
         assert res.trades[0].exit_reason == "STOP_LOSS"  # Conservative stop out!
         assert res.trades[0].pnl_usd < 0
+
+    def test_partial_tp_and_breakeven_lock(self):
+        # Entry BUY at 2000.25 (spread+slippage). SL = 1998.25 (risk = 2.0). TP = 2006.25 (+3.0R).
+        # Candle 1: High reaches 2003.0 (+1.37R > 1.0R) -> triggers 50% Partial TP, SL moved to BE!
+        # Candle 2: Pullback drops to 2000.0 -> hits BE SL.
+        # Should record exit_reason = PARTIAL_TP_BE and overall profitable trade!
+        df_partial = pd.DataFrame({
+            "timestamp": [1000, 2000, 3000],
+            "open": [2000.0, 2001.0, 2001.0],
+            "high": [2000.5, 2003.5, 2001.5],  # reaches +1.0R
+            "low": [1999.5, 2000.5, 1999.5],   # drops back in candle 2
+            "close": [2000.0, 2002.0, 2000.0],
+            "atr_14": [2.0, 2.0, 2.0],
+        })
+        signals = ["BUY", "WAIT", "WAIT"]
+        engine = RealisticBacktestEngine(
+            initial_balance=10_000.0,
+            enable_partial_tp=True,
+            partial_tp_r=1.0,
+            partial_tp_ratio=0.50,
+            enable_breakeven=True,
+        )
+        res = engine.run(df_partial, signals=signals)
+
+        assert res.total_trades == 1
+        assert res.trades[0].exit_reason == "PARTIAL_TP_BE"
+        assert res.trades[0].pnl_usd > 0
+        assert res.breakeven_trades == 1
+        assert res.win_rate_with_be_pct == 100.0

@@ -75,6 +75,9 @@ class RealisticBacktestEngine:
         max_holding_bars: int = 24,           # 2 hours on M5
         enable_breakeven: bool = True,        # Move SL to entry once in profit (+1.0R)
         breakeven_r: float = 1.0,             # Target R:Multiple to trigger Breakeven
+        enable_partial_tp: bool = True,       # Scale out 50% position size at +1.0R
+        partial_tp_r: float = 1.0,            # Target R:Multiple to take 50% partial profit
+        partial_tp_ratio: float = 0.50,       # Fraction of position to scale out
     ):
         self.initial_balance = initial_balance
         self.risk_pct_per_trade = risk_pct_per_trade
@@ -83,6 +86,9 @@ class RealisticBacktestEngine:
         self.max_holding_bars = max_holding_bars
         self.enable_breakeven = enable_breakeven
         self.breakeven_r = breakeven_r
+        self.enable_partial_tp = enable_partial_tp
+        self.partial_tp_r = partial_tp_r
+        self.partial_tp_ratio = partial_tp_ratio
 
     def run(
         self,
@@ -126,7 +132,7 @@ class RealisticBacktestEngine:
             c_ts = timestamp[i]
             c_atr = atr[i] if not np.isnan(atr[i]) and atr[i] > 0 else 2.0
 
-            # 1. Check exit and Breakeven trailing for active open trade
+            # 1. Check exit, Partial TP, and Breakeven trailing for active open trade
             if active_trade is not None:
                 entry_dir = active_trade["direction"]
                 entry_p = active_trade["entry_price"]
@@ -134,8 +140,10 @@ class RealisticBacktestEngine:
                 tp = active_trade["tp"]
                 bars_held = i - active_trade["entry_bar"]
                 pos_size = active_trade["size"]
+                orig_size = active_trade.get("orig_size", pos_size)
                 init_risk = active_trade.get("initial_risk", max(abs(entry_p - sl), 0.50))
                 be_active = active_trade.get("breakeven_active", False)
+                ptp_taken = active_trade.get("partial_tp_taken", False)
 
                 trade_closed = False
                 exit_price = 0.0
@@ -152,8 +160,21 @@ class RealisticBacktestEngine:
                         exit_reason = "STOP_LOSS"
                         trade_closed = True
                     else:
-                        # Trailing Breakeven Protection Trigger (+1.0R in profit)
-                        if self.enable_breakeven and not be_active and c_high >= entry_p + (self.breakeven_r * init_risk):
+                        # Check Partial TP scale-out at +1.0R
+                        if self.enable_partial_tp and not ptp_taken and c_high >= entry_p + (self.partial_tp_r * init_risk):
+                            p_size = orig_size * self.partial_tp_ratio
+                            ptp_price = (entry_p + self.partial_tp_r * init_risk) - self.slippage_usd
+                            active_trade["realized_partial_pnl"] += (ptp_price - entry_p) * p_size
+                            pos_size = pos_size - p_size
+                            active_trade["size"] = pos_size
+                            active_trade["partial_tp_taken"] = True
+                            ptp_taken = True
+                            # Move SL to breakeven (+ spread)
+                            sl = entry_p + self.spread_usd
+                            active_trade["sl"] = sl
+                            active_trade["breakeven_active"] = True
+                            be_active = True
+                        elif self.enable_breakeven and not be_active and c_high >= entry_p + (self.breakeven_r * init_risk):
                             sl = entry_p + self.spread_usd
                             active_trade["sl"] = sl
                             active_trade["breakeven_active"] = True
@@ -162,7 +183,7 @@ class RealisticBacktestEngine:
                         hit_sl = c_low <= sl
                         if hit_sl:
                             exit_price = sl - self.slippage_usd
-                            exit_reason = "BREAKEVEN" if be_active else "STOP_LOSS"
+                            exit_reason = "PARTIAL_TP_BE" if ptp_taken else ("BREAKEVEN" if be_active else "STOP_LOSS")
                             trade_closed = True
                         elif hit_tp:
                             exit_price = tp - self.slippage_usd
@@ -174,8 +195,10 @@ class RealisticBacktestEngine:
                             trade_closed = True
 
                     if trade_closed:
-                        pnl = (exit_price - entry_p) * pos_size
-                        r_mult = (exit_price - entry_p) / init_risk if init_risk > 0 else 0.0
+                        rem_pnl = (exit_price - entry_p) * pos_size
+                        pnl = active_trade.get("realized_partial_pnl", 0.0) + rem_pnl
+                        total_risk_dlr = init_risk * orig_size
+                        r_mult = pnl / total_risk_dlr if total_risk_dlr > 0 else 0.0
 
                 else:  # "SELL"
                     orig_sl = entry_p + init_risk
@@ -188,8 +211,21 @@ class RealisticBacktestEngine:
                         exit_reason = "STOP_LOSS"
                         trade_closed = True
                     else:
-                        # Trailing Breakeven Protection Trigger (+1.0R in profit)
-                        if self.enable_breakeven and not be_active and c_low <= entry_p - (self.breakeven_r * init_risk):
+                        # Check Partial TP scale-out at +1.0R
+                        if self.enable_partial_tp and not ptp_taken and c_low <= entry_p - (self.partial_tp_r * init_risk):
+                            p_size = orig_size * self.partial_tp_ratio
+                            ptp_price = (entry_p - self.partial_tp_r * init_risk) + self.slippage_usd
+                            active_trade["realized_partial_pnl"] += (entry_p - ptp_price) * p_size
+                            pos_size = pos_size - p_size
+                            active_trade["size"] = pos_size
+                            active_trade["partial_tp_taken"] = True
+                            ptp_taken = True
+                            # Move SL to breakeven (- spread)
+                            sl = entry_p - self.spread_usd
+                            active_trade["sl"] = sl
+                            active_trade["breakeven_active"] = True
+                            be_active = True
+                        elif self.enable_breakeven and not be_active and c_low <= entry_p - (self.breakeven_r * init_risk):
                             sl = entry_p - self.spread_usd
                             active_trade["sl"] = sl
                             active_trade["breakeven_active"] = True
@@ -198,7 +234,7 @@ class RealisticBacktestEngine:
                         hit_sl = c_high >= sl
                         if hit_sl:
                             exit_price = sl + self.slippage_usd
-                            exit_reason = "BREAKEVEN" if be_active else "STOP_LOSS"
+                            exit_reason = "PARTIAL_TP_BE" if ptp_taken else ("BREAKEVEN" if be_active else "STOP_LOSS")
                             trade_closed = True
                         elif hit_tp:
                             exit_price = tp + self.slippage_usd
@@ -210,8 +246,10 @@ class RealisticBacktestEngine:
                             trade_closed = True
 
                     if trade_closed:
-                        pnl = (entry_p - exit_price) * pos_size
-                        r_mult = (entry_p - exit_price) / init_risk if init_risk > 0 else 0.0
+                        rem_pnl = (entry_p - exit_price) * pos_size
+                        pnl = active_trade.get("realized_partial_pnl", 0.0) + rem_pnl
+                        total_risk_dlr = init_risk * orig_size
+                        r_mult = pnl / total_risk_dlr if total_risk_dlr > 0 else 0.0
 
                 if trade_closed:
                     balance += pnl
@@ -223,7 +261,7 @@ class RealisticBacktestEngine:
                         exit_price=round(exit_price, 3),
                         stop_loss=round(sl, 3),
                         take_profit=round(tp, 3),
-                        position_size_oz=round(pos_size, 3),
+                        position_size_oz=round(orig_size, 3),
                         pnl_usd=round(pnl, 2),
                         pnl_pct=round((pnl / balance) * 100.0, 4),
                         r_multiple=round(r_mult, 2),
@@ -257,18 +295,21 @@ class RealisticBacktestEngine:
                             "entry_price": entry_p,
                             "sl": sl,
                             "tp": tp,
+                            "orig_size": size_oz,
                             "size": size_oz,
                             "initial_risk": risk_per_oz,
                             "entry_time": c_ts,
                             "entry_bar": i,
                             "breakeven_active": False,
+                            "partial_tp_taken": False,
+                            "realized_partial_pnl": 0.0,
                         }
 
         # Calculate performance statistics
         total_trades = len(trades)
-        wins = [t for t in trades if t.pnl_usd > 0]
-        losses = [t for t in trades if t.pnl_usd < 0 and t.exit_reason != "BREAKEVEN"]
-        breakevens = [t for t in trades if t.exit_reason == "BREAKEVEN"]
+        wins = [t for t in trades if t.exit_reason == "TAKE_PROFIT" or (t.exit_reason == "TIME_LIMIT" and t.pnl_usd > 0)]
+        breakevens = [t for t in trades if t.exit_reason in ["BREAKEVEN", "PARTIAL_TP_BE"] or (t.exit_reason == "TIME_LIMIT" and t.pnl_usd == 0)]
+        losses = [t for t in trades if t.exit_reason == "STOP_LOSS" or (t.exit_reason == "TIME_LIMIT" and t.pnl_usd < 0)]
 
         winning_count = len(wins)
         losing_count = len(losses)
@@ -276,8 +317,8 @@ class RealisticBacktestEngine:
         win_rate = (winning_count / total_trades * 100.0) if total_trades > 0 else 0.0
         win_rate_with_be = ((winning_count + breakeven_count) / total_trades * 100.0) if total_trades > 0 else 0.0
 
-        gross_profit = sum(t.pnl_usd for t in wins)
-        gross_loss = abs(sum(t.pnl_usd for t in losses))
+        gross_profit = sum(t.pnl_usd for t in trades if t.pnl_usd > 0)
+        gross_loss = abs(sum(t.pnl_usd for t in trades if t.pnl_usd < 0))
         profit_factor = (gross_profit / gross_loss) if gross_loss > 0 else float("inf") if gross_profit > 0 else 0.0
 
         net_profit = balance - self.initial_balance

@@ -116,7 +116,10 @@ class BacktestRequest(BaseModel):
     max_holding_bars: int = Field(default=24, ge=1, le=200)
     enable_breakeven: bool = Field(default=True, description="Move Stop Loss to entry once price reaches +1.0R in profit")
     breakeven_r: float = Field(default=1.0, description="R:Multiple trigger to activate Breakeven")
+    enable_partial_tp: bool = Field(default=True, description="Lock in 50% profit at +1.0R and trail stop-loss to breakeven")
+    partial_tp_r: float = Field(default=1.0, description="R:Multiple trigger to take 50% partial profit")
     only_killzones: bool = Field(default=True, description="Execute trades strictly during London (07:00-10:00) & NY (12:00-15:00) Killzones")
+    use_h1_gatekeeper: bool = Field(default=True, description="Enforce H1 Macro Trend alignment: Price > H1 200 EMA for BUY, Price < H1 200 EMA for SELL")
     target_rr: Optional[float] = Field(default=None, description="Optional target Risk:Reward ratio (e.g. 1.2, 1.5, 2.0)")
 
 

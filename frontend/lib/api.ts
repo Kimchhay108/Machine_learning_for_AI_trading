@@ -282,7 +282,10 @@ export async function runBacktest(params: {
   max_holding_bars?: number;
   enable_breakeven?: boolean;
   breakeven_r?: number;
+  enable_partial_tp?: boolean;
+  partial_tp_r?: number;
   only_killzones?: boolean;
+  use_h1_gatekeeper?: boolean;
   target_rr?: number;
 }): Promise<BacktestResponse> {
   const res = await fetch(`${API_BASE}/api/backtest/run`, {
@@ -305,7 +308,10 @@ export async function runBacktestComparison(params?: {
   max_holding_bars?: number;
   enable_breakeven?: boolean;
   breakeven_r?: number;
+  enable_partial_tp?: boolean;
+  partial_tp_r?: number;
   only_killzones?: boolean;
+  use_h1_gatekeeper?: boolean;
   target_rr?: number;
 }): Promise<BacktestComparisonResponse> {
   const res = await fetch(`${API_BASE}/api/backtest/compare`, {

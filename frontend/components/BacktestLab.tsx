@@ -49,6 +49,8 @@ export default function BacktestLab() {
   const [maxBars, setMaxBars] = useState(24);
   const [enableBreakeven, setEnableBreakeven] = useState(true);
   const [onlyKillzones, setOnlyKillzones] = useState(true);
+  const [useH1Gatekeeper, setUseH1Gatekeeper] = useState(true);
+  const [enablePartialTP, setEnablePartialTP] = useState(true);
   const [targetRR, setTargetRR] = useState<number | undefined>(undefined);
 
   // Chart ref
@@ -141,7 +143,10 @@ export default function BacktestLab() {
         max_holding_bars: Number(maxBars),
         enable_breakeven: enableBreakeven,
         breakeven_r: 1.0,
+        enable_partial_tp: enablePartialTP,
+        partial_tp_r: 1.0,
         only_killzones: onlyKillzones,
+        use_h1_gatekeeper: useH1Gatekeeper,
         target_rr: targetRR,
       });
       setResults(res);
@@ -165,7 +170,10 @@ export default function BacktestLab() {
         max_holding_bars: Number(maxBars),
         enable_breakeven: enableBreakeven,
         breakeven_r: 1.0,
+        enable_partial_tp: enablePartialTP,
+        partial_tp_r: 1.0,
         only_killzones: onlyKillzones,
+        use_h1_gatekeeper: useH1Gatekeeper,
         target_rr: targetRR,
       });
       setComparison(compRes);
@@ -344,7 +352,29 @@ export default function BacktestLab() {
               className="rounded bg-dark-800 border-dark-600 text-gold-500 focus:ring-0 w-3.5 h-3.5"
             />
             <span className="font-semibold text-emerald-400">🛡️ Move SL to Breakeven at +1.0R</span>
-            <span className="text-[10px] text-gray-400">(Turns reversals into scratch trades)</span>
+            <span className="text-[10px] text-gray-400">(Scratch protection)</span>
+          </label>
+
+          <label className="flex items-center space-x-2 text-gray-300 cursor-pointer select-none">
+            <input
+              type="checkbox"
+              checked={enablePartialTP}
+              onChange={(e) => setEnablePartialTP(e.target.checked)}
+              className="rounded bg-dark-800 border-dark-600 text-gold-500 focus:ring-0 w-3.5 h-3.5"
+            />
+            <span className="font-semibold text-purple-400">💰 50% Partial TP at +1.0R</span>
+            <span className="text-[10px] text-gray-400">(Bank +0.50R, runner risk-free)</span>
+          </label>
+
+          <label className="flex items-center space-x-2 text-gray-300 cursor-pointer select-none">
+            <input
+              type="checkbox"
+              checked={useH1Gatekeeper}
+              onChange={(e) => setUseH1Gatekeeper(e.target.checked)}
+              className="rounded bg-dark-800 border-dark-600 text-gold-500 focus:ring-0 w-3.5 h-3.5"
+            />
+            <span className="font-semibold text-blue-400">🏛️ H1 Trend Gatekeeper</span>
+            <span className="text-[10px] text-gray-400">(200 EMA + Structure filter)</span>
           </label>
 
           <label className="flex items-center space-x-2 text-gray-300 cursor-pointer select-none">
@@ -355,7 +385,7 @@ export default function BacktestLab() {
               className="rounded bg-dark-800 border-dark-600 text-gold-500 focus:ring-0 w-3.5 h-3.5"
             />
             <span className="font-semibold text-gold-400">⚡ London & NY Killzones Only</span>
-            <span className="text-[10px] text-gray-400">(07:00-10:00 & 12:00-15:00 UTC — removes Asian chop)</span>
+            <span className="text-[10px] text-gray-400">(07-10 & 12-15 UTC)</span>
           </label>
         </div>
 
