@@ -26,6 +26,8 @@ class Settings(BaseSettings):
 
     # DuckDB Database File Path
     DUCKDB_PATH: Path = BASE_DIR / "data" / "market_data.duckdb"
+    MODELS_DIR: Path = BASE_DIR / "data" / "models"
+    BACKTEST_DIR: Path = BASE_DIR / "data" / "backtests"
 
     # Dukascopy API Settings
     DUKASCOPY_BASE_URL: str = "https://jetta.dukascopy.com/v1"
@@ -39,9 +41,13 @@ class Settings(BaseSettings):
     DUKASCOPY_RETRY_DELAY: float = 2.0
     DUKASCOPY_RATE_LIMIT_DELAY: float = 0.25  # Polite delay between batch requests
 
-    # App environment
+    # App environment and API settings
     ENVIRONMENT: str = "development"
     LOG_LEVEL: str = "INFO"
+    API_ADMIN_KEY: str = "xauusd-admin-secret-key"
+    CORS_ORIGINS: list[str] = ["http://localhost:3000", "http://127.0.0.1:3000", "*"]
+    API_HOST: str = "0.0.0.0"
+    API_PORT: int = 8000
 
     def ensure_directories(self) -> None:
         """Create all required data and report directories if they do not exist."""
@@ -57,6 +63,8 @@ class Settings(BaseSettings):
             self.LABELS_DIR / "xauusd",
             self.REPORTS_DIR,
             self.QUALITY_REPORTS_DIR,
+            self.MODELS_DIR,
+            self.BACKTEST_DIR,
         ]
         for d in directories:
             d.mkdir(parents=True, exist_ok=True)
