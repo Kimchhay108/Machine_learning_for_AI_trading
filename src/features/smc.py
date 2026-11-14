@@ -316,6 +316,83 @@ class SmartMoneyConcepts:
         res = res.drop(columns=["utc_day"])
         return res
 
+    @staticmethod
+    def add_ict_patterns(df: pd.DataFrame) -> pd.DataFrame:
+        """Compute institutional ICT models:
+        - ICT 2022 Mentorship Model: Sweep of Liquidity -> Market Structure Shift (MSS) -> FVG -> Discount/Premium Retrace
+        - ICT Silver Bullet: London (08:00-09:00 UTC), NY AM (15:00-16:00 UTC), NY PM (19:00-20:00 UTC)
+        - ICT Judas Swing: London open fake-out sweeping Asian session high/low
+        - ICT Turtle Soup: Fast liquidity stop run with immediate candle body rejection
+        """
+        res = df.copy()
+
+        # 1. ICT 2022 Mentorship Model
+        # Rolling sweep flags over last 12 bars (60 min lookback on M5)
+        sweep_low_series = (res["liquidity_sweep_bullish"] | res.get("swept_pdl", 0)).astype(int)
+        sweep_high_series = (res["liquidity_sweep_bearish"] | res.get("swept_pdh", 0)).astype(int)
+        sweep_low_window = sweep_low_series.rolling(12, min_periods=1).max().fillna(0).astype(int)
+        sweep_high_window = sweep_high_series.rolling(12, min_periods=1).max().fillna(0).astype(int)
+
+        # Market structure shift / CHoCH within last 8 bars
+        choch_bull_window = res["choch_bullish"].rolling(8, min_periods=1).max().fillna(0).astype(int)
+        choch_bear_window = res["choch_bearish"].rolling(8, min_periods=1).max().fillna(0).astype(int)
+
+        # Active FVG
+        fvg_bull_roll = res["fvg_bullish_new"].rolling(6, min_periods=1).max().fillna(0).astype(int)
+        fvg_bear_roll = res["fvg_bearish_new"].rolling(6, min_periods=1).max().fillna(0).astype(int)
+        fvg_bull_window = fvg_bull_roll | (res["fvg_bullish_unmitigated_count"] > 0).astype(int)
+        fvg_bear_window = fvg_bear_roll | (res["fvg_bearish_unmitigated_count"] > 0).astype(int)
+
+        # Discount (for longs) / Premium (for shorts)
+        in_discount = (res.get("is_discount_zone", 1) | res.get("is_ote_long_zone", 0)).astype(int)
+        in_premium = (res.get("is_premium_zone", 1) | res.get("is_ote_short_zone", 0)).astype(int)
+
+        res["ict_2022_bullish"] = (
+            (sweep_low_window == 1) & (choch_bull_window == 1) & (fvg_bull_window == 1) & (in_discount == 1)
+        ).astype(int)
+
+        res["ict_2022_bearish"] = (
+            (sweep_high_window == 1) & (choch_bear_window == 1) & (fvg_bear_window == 1) & (in_premium == 1)
+        ).astype(int)
+
+        # 2. ICT Silver Bullet
+        # Macro windows (UTC): London (08:00-09:00), NY AM (15:00-16:00), NY PM (19:00-20:00)
+        hour = res.get("utc_hour", pd.Series(0, index=res.index))
+        sb_window = ((hour == 8) | (hour == 15) | (hour == 19)).astype(int)
+        res["ict_silver_bullet_window"] = sb_window
+
+        res["ict_silver_bullet_bullish"] = (
+            (sb_window == 1) &
+            (res["fvg_bullish_new"] == 1) &
+            (res.get("market_structure_trend", 1) >= 0)
+        ).astype(int)
+
+        res["ict_silver_bullet_bearish"] = (
+            (sb_window == 1) &
+            (res["fvg_bearish_new"] == 1) &
+            (res.get("market_structure_trend", -1) <= 0)
+        ).astype(int)
+
+        # 3. ICT Judas Swing
+        # London open (07:00 - 09:00 UTC) sweeping Asian high/low before true reversal
+        london_open = ((hour >= 7) & (hour <= 9)).astype(int)
+        res["ict_judas_swing_bullish"] = (
+            (london_open == 1) & (res["liquidity_sweep_bullish"] == 1) & (res["close"] > res["open"])
+        ).astype(int)
+        res["ict_judas_swing_bearish"] = (
+            (london_open == 1) & (res["liquidity_sweep_bearish"] == 1) & (res["close"] < res["open"])
+        ).astype(int)
+
+        # 4. ICT Turtle Soup (Immediate wick sweep with rejection)
+        res["ict_turtle_soup_bullish"] = (
+            (res["liquidity_sweep_bullish"] == 1) & (res["close"] > res["open"])
+        ).astype(int)
+        res["ict_turtle_soup_bearish"] = (
+            (res["liquidity_sweep_bearish"] == 1) & (res["close"] < res["open"])
+        ).astype(int)
+
+        return res
+
     @classmethod
     def compute_all(cls, df: pd.DataFrame) -> pd.DataFrame:
         """Compute all Smart Money Concepts features sequentially."""
@@ -325,4 +402,5 @@ class SmartMoneyConcepts:
         res = cls.add_order_blocks(res)
         res = cls.add_premium_discount(res)
         res = cls.add_session_and_pdh_pdl(res)
+        res = cls.add_ict_patterns(res)
         return res

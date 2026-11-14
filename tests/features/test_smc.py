@@ -103,3 +103,24 @@ class TestSmartMoneyConcepts:
         assert len(res) == len(self.df)
         assert "market_structure_trend" in res.columns
         assert "order_block_bullish" in res.columns
+        assert "ict_2022_bullish" in res.columns
+        assert "ict_2022_bearish" in res.columns
+        assert "ict_silver_bullet_window" in res.columns
+        assert "ict_silver_bullet_bullish" in res.columns
+        assert "ict_silver_bullet_bearish" in res.columns
+        assert "ict_judas_swing_bullish" in res.columns
+        assert "ict_judas_swing_bearish" in res.columns
+        assert "ict_turtle_soup_bullish" in res.columns
+        assert "ict_turtle_soup_bearish" in res.columns
+
+    def test_ict_patterns_explicit(self):
+        res = SmartMoneyConcepts.compute_all(self.df)
+        # Verify columns exist and are binary 0/1 series
+        for col in [
+            "ict_2022_bullish", "ict_2022_bearish",
+            "ict_silver_bullet_window", "ict_silver_bullet_bullish", "ict_silver_bullet_bearish",
+            "ict_judas_swing_bullish", "ict_judas_swing_bearish",
+            "ict_turtle_soup_bullish", "ict_turtle_soup_bearish",
+        ]:
+            assert col in res.columns
+            assert set(res[col].unique()).issubset({0, 1})
