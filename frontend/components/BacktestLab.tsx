@@ -291,6 +291,8 @@ export default function BacktestLab() {
                 <tr>
                   <th className="py-2 px-3">Type</th>
                   <th className="py-2 px-3">Entry Price</th>
+                  <th className="py-2 px-3">Stop Loss</th>
+                  <th className="py-2 px-3">Take Profit</th>
                   <th className="py-2 px-3">Exit Price</th>
                   <th className="py-2 px-3">PnL ($)</th>
                   <th className="py-2 px-3">R-Multiple</th>
@@ -309,14 +311,26 @@ export default function BacktestLab() {
                         {t.direction}
                       </span>
                     </td>
-                    <td className="py-2 px-3">${t.entry_price.toFixed(2)}</td>
+                    <td className="py-2 px-3 font-semibold text-white">${t.entry_price.toFixed(2)}</td>
+                    <td className="py-2 px-3 text-bear-400">${t.stop_loss.toFixed(2)}</td>
+                    <td className="py-2 px-3 text-bull-400">${t.take_profit.toFixed(2)}</td>
                     <td className="py-2 px-3">${t.exit_price.toFixed(2)}</td>
                     <td className={`py-2 px-3 font-semibold ${t.pnl_usd >= 0 ? 'text-bull-400' : 'text-bear-400'}`}>
                       {t.pnl_usd >= 0 ? '+' : ''}${t.pnl_usd.toFixed(2)}
                     </td>
                     <td className="py-2 px-3">{t.r_multiple > 0 ? '+' : ''}{t.r_multiple.toFixed(2)}R</td>
                     <td className="py-2 px-3">
-                      <span className="text-gray-400 text-[11px] font-sans">{t.exit_reason}</span>
+                      <span
+                        className={`px-1.5 py-0.5 rounded text-[10px] font-sans font-bold ${
+                          t.exit_reason === 'TAKE_PROFIT'
+                            ? 'bg-bull-500/20 text-bull-300'
+                            : t.exit_reason === 'STOP_LOSS'
+                            ? 'bg-bear-500/20 text-bear-300'
+                            : 'bg-dark-700 text-gray-300'
+                        }`}
+                      >
+                        {t.exit_reason}
+                      </span>
                     </td>
                   </tr>
                 ))}
