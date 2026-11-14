@@ -85,19 +85,6 @@ export default function TradingViewChart({
   // Keep a ref of sortedData for coordinate computations
   const sortedDataRef = useRef<CandlestickData<Time>[]>([]);
 
-  useEffect(() => {
-    const timer = setTimeout(() => {
-      if (chartContainerRef.current && chartRef.current) {
-        chartRef.current.applyOptions({
-          width: chartContainerRef.current.clientWidth,
-          height: chartContainerRef.current.clientHeight,
-        });
-        updateBoxCoordinates();
-      }
-    }, 60);
-    return () => clearTimeout(timer);
-  }, [isFullscreen]);
-
   // Compute Risk / Reward Green TP and Red SL Box coordinates
   const updateBoxCoordinates = useCallback(() => {
     if (!chartRef.current || !candleSeriesRef.current || !chartContainerRef.current) {
@@ -110,107 +97,142 @@ export default function TradingViewChart({
       return;
     }
 
-    // Determine the active setup from all_model_setups or fallback to main prediction
-    const setups: ModelSetupItem[] | undefined = prediction.contributing_features?.all_model_setups;
-    let setup: {
-      direction: string;
-      entry_price: number;
-      stop_loss: number;
-      take_profit: number;
-      risk_reward_ratio: number;
-      model_name: string;
-    };
-
-    if (setups && setups.length > 0) {
-      const match = setups.find((s) => s.model_key === activeBoxModel) || setups[0];
-      setup = {
-        direction: match.direction,
-        entry_price: match.entry_price,
-        stop_loss: match.stop_loss,
-        take_profit: match.take_profit,
-        risk_reward_ratio: match.risk_reward_ratio,
-        model_name: match.model_name.split(':')[0],
+    try {
+      // Determine the active setup from all_model_setups or fallback to main prediction
+      const setups: ModelSetupItem[] | undefined = prediction.contributing_features?.all_model_setups;
+      let setup: {
+        direction: string;
+        entry_price: number;
+        stop_loss: number;
+        take_profit: number;
+        risk_reward_ratio: number;
+        model_name: string;
       };
-    } else {
-      setup = {
-        direction: prediction.direction,
-        entry_price: prediction.entry_reference_price,
-        stop_loss: prediction.stop_loss_reference,
-        take_profit: prediction.take_profit_reference,
-        risk_reward_ratio: prediction.risk_reward_ratio,
-        model_name: 'Model E',
-      };
-    }
 
-    const entryY = candleSeriesRef.current.priceToCoordinate(setup.entry_price);
-    const tpY = candleSeriesRef.current.priceToCoordinate(setup.take_profit);
-    const slY = candleSeriesRef.current.priceToCoordinate(setup.stop_loss);
+      if (setups && Array.isArray(setups) && setups.length > 0) {
+        const match = setups.find((s) => s.model_key === activeBoxModel) || setups[0];
+        setup = {
+          direction: match?.direction || prediction.direction || 'WAIT',
+          entry_price: typeof match?.entry_price === 'number' ? match.entry_price : (prediction.entry_reference_price || 0),
+          stop_loss: typeof match?.stop_loss === 'number' ? match.stop_loss : (prediction.stop_loss_reference || 0),
+          take_profit: typeof match?.take_profit === 'number' ? match.take_profit : (prediction.take_profit_reference || 0),
+          risk_reward_ratio: typeof match?.risk_reward_ratio === 'number' ? match.risk_reward_ratio : (prediction.risk_reward_ratio || 2.0),
+          model_name: match?.model_name ? match.model_name.split(':')[0] : 'Model',
+        };
+      } else {
+        setup = {
+          direction: prediction.direction || 'WAIT',
+          entry_price: prediction.entry_reference_price || 0,
+          stop_loss: prediction.stop_loss_reference || 0,
+          take_profit: prediction.take_profit_reference || 0,
+          risk_reward_ratio: prediction.risk_reward_ratio || 2.0,
+          model_name: 'Model E',
+        };
+      }
 
-    if (entryY === null || tpY === null || slY === null) {
+      if (!setup.entry_price || !setup.take_profit || !setup.stop_loss) {
+        setBoxCoords(null);
+        return;
+      }
+
+      const entryY = candleSeriesRef.current.priceToCoordinate(setup.entry_price);
+      const tpY = candleSeriesRef.current.priceToCoordinate(setup.take_profit);
+      const slY = candleSeriesRef.current.priceToCoordinate(setup.stop_loss);
+
+      if (entryY === null || tpY === null || slY === null) {
+        setBoxCoords(null);
+        return;
+      }
+
+      const containerW = chartContainerRef.current.clientWidth;
+      const rightScaleW = 65;
+      const availW = containerW - rightScaleW;
+
+      const data = sortedDataRef.current;
+      const lastCandle = data.length > 0 ? data[data.length - 1] : null;
+
+      let startX: number | null = null;
+      if (lastCandle && chartRef.current) {
+        try {
+          startX = chartRef.current.timeScale().timeToCoordinate(lastCandle.time as Time);
+        } catch (e) {
+          startX = null;
+        }
+      }
+
+      if (startX === null || startX < 50 || startX > availW - 80) {
+        startX = Math.max(availW - 240, 60);
+      }
+
+      const boxW = Math.max(availW - startX, 130);
+
+      let greenY = 0;
+      let greenH = 0;
+      let redY = 0;
+      let redH = 0;
+
+      if (setup.direction === 'SELL') {
+        // SELL: Stop Loss is above entry (lower pixel Y), Take Profit is below entry (higher pixel Y)
+        redY = Math.min(slY, entryY);
+        redH = Math.max(Math.abs(entryY - slY), 6);
+        greenY = Math.min(entryY, tpY);
+        greenH = Math.max(Math.abs(tpY - entryY), 6);
+      } else {
+        // BUY or WAIT default: Take Profit is above entry (lower pixel Y), Stop Loss is below (higher pixel Y)
+        greenY = Math.min(tpY, entryY);
+        greenH = Math.max(Math.abs(entryY - tpY), 6);
+        redY = Math.min(entryY, slY);
+        redH = Math.max(Math.abs(slY - entryY), 6);
+      }
+
+      setBoxCoords({
+        x: startX,
+        width: boxW,
+        greenY,
+        greenH,
+        redY,
+        redH,
+        entryY,
+        tpPrice: setup.take_profit,
+        slPrice: setup.stop_loss,
+        entryPrice: setup.entry_price,
+        dir: setup.direction,
+        rr: setup.risk_reward_ratio,
+        modelName: setup.model_name,
+      });
+    } catch (err) {
       setBoxCoords(null);
-      return;
     }
-
-    const containerW = chartContainerRef.current.clientWidth;
-    const rightScaleW = 65;
-    const availW = containerW - rightScaleW;
-
-    const data = sortedDataRef.current;
-    const lastCandle = data.length > 0 ? data[data.length - 1] : null;
-
-    let startX: number | null = null;
-    if (lastCandle) {
-      startX = chartRef.current.timeScale().timeToCoordinate(lastCandle.time as Time);
-    }
-
-    if (startX === null || startX < 50 || startX > availW - 80) {
-      startX = Math.max(availW - 240, 60);
-    }
-
-    const boxW = Math.max(availW - startX, 130);
-
-    let greenY = 0;
-    let greenH = 0;
-    let redY = 0;
-    let redH = 0;
-
-    if (setup.direction === 'SELL') {
-      // SELL: Stop Loss is above entry (lower pixel Y), Take Profit is below entry (higher pixel Y)
-      redY = Math.min(slY, entryY);
-      redH = Math.max(Math.abs(entryY - slY), 6);
-      greenY = Math.min(entryY, tpY);
-      greenH = Math.max(Math.abs(tpY - entryY), 6);
-    } else {
-      // BUY or WAIT default: Take Profit is above entry (lower pixel Y), Stop Loss is below (higher pixel Y)
-      greenY = Math.min(tpY, entryY);
-      greenH = Math.max(Math.abs(entryY - tpY), 6);
-      redY = Math.min(entryY, slY);
-      redH = Math.max(Math.abs(slY - entryY), 6);
-    }
-
-    setBoxCoords({
-      x: startX,
-      width: boxW,
-      greenY,
-      greenH,
-      redY,
-      redH,
-      entryY,
-      tpPrice: setup.take_profit,
-      slPrice: setup.stop_loss,
-      entryPrice: setup.entry_price,
-      dir: setup.direction,
-      rr: setup.risk_reward_ratio,
-      modelName: setup.model_name,
-    });
   }, [showRRBoxes, prediction, activeBoxModel]);
+
+  const updateBoxCoordinatesRef = useRef(updateBoxCoordinates);
+  useEffect(() => {
+    updateBoxCoordinatesRef.current = updateBoxCoordinates;
+  });
+
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      if (chartContainerRef.current && chartRef.current) {
+        try {
+          chartRef.current.applyOptions({
+            width: chartContainerRef.current.clientWidth,
+            height: chartContainerRef.current.clientHeight,
+          });
+          updateBoxCoordinatesRef.current();
+        } catch (e) {}
+      }
+    }, 60);
+    return () => clearTimeout(timer);
+  }, [isFullscreen]);
 
   // Chart setup
   useEffect(() => {
     if (!chartContainerRef.current) return;
 
     if (chartRef.current) {
-      chartRef.current.remove();
+      try {
+        chartRef.current.remove();
+      } catch (e) {}
       chartRef.current = null;
     }
 
@@ -274,17 +296,21 @@ export default function TradingViewChart({
     ema200SeriesRef.current = ema200Series;
 
     // Hook visible range changes to update SVG box coordinates
-    chart.timeScale().subscribeVisibleLogicalRangeChange(() => {
-      updateBoxCoordinates();
-    });
+    try {
+      chart.timeScale().subscribeVisibleLogicalRangeChange(() => {
+        updateBoxCoordinatesRef.current();
+      });
+    } catch (e) {}
 
     const handleResize = () => {
       if (chartContainerRef.current && chartRef.current) {
-        chartRef.current.applyOptions({
-          width: chartContainerRef.current.clientWidth,
-          height: chartContainerRef.current.clientHeight,
-        });
-        updateBoxCoordinates();
+        try {
+          chartRef.current.applyOptions({
+            width: chartContainerRef.current.clientWidth,
+            height: chartContainerRef.current.clientHeight,
+          });
+          updateBoxCoordinatesRef.current();
+        } catch (e) {}
       }
     };
 
@@ -293,9 +319,21 @@ export default function TradingViewChart({
 
     return () => {
       window.removeEventListener('resize', handleResize);
-      chart.remove();
+      if (chartRef.current) {
+        try {
+          chartRef.current.remove();
+        } catch (e) {}
+        chartRef.current = null;
+      }
+      candleSeriesRef.current = null;
+      ema20SeriesRef.current = null;
+      ema50SeriesRef.current = null;
+      ema200SeriesRef.current = null;
+      tpPriceLineRef.current = null;
+      entryPriceLineRef.current = null;
+      slPriceLineRef.current = null;
     };
-  }, [updateBoxCoordinates]);
+  }, []);
 
   // Update chart data & apply anti-collision marker consolidation
   useEffect(() => {
@@ -522,59 +560,79 @@ export default function TradingViewChart({
       });
 
       finalMarkers.sort((a, b) => (a.time as number) - (b.time as number));
-      candleSeriesRef.current.setMarkers(finalMarkers);
+      try {
+        candleSeriesRef.current.setMarkers(finalMarkers);
+      } catch (e) {}
     }
 
     // =========================================================================
     // PRICE LINES FOR TP, ENTRY, AND SL ON PRICE SCALE
     // =========================================================================
     if (candleSeriesRef.current) {
-      if (tpPriceLineRef.current) candleSeriesRef.current.removePriceLine(tpPriceLineRef.current);
-      if (entryPriceLineRef.current) candleSeriesRef.current.removePriceLine(entryPriceLineRef.current);
-      if (slPriceLineRef.current) candleSeriesRef.current.removePriceLine(slPriceLineRef.current);
+      try {
+        if (tpPriceLineRef.current) candleSeriesRef.current.removePriceLine(tpPriceLineRef.current);
+      } catch (e) {}
       tpPriceLineRef.current = null;
+
+      try {
+        if (entryPriceLineRef.current) candleSeriesRef.current.removePriceLine(entryPriceLineRef.current);
+      } catch (e) {}
       entryPriceLineRef.current = null;
+
+      try {
+        if (slPriceLineRef.current) candleSeriesRef.current.removePriceLine(slPriceLineRef.current);
+      } catch (e) {}
       slPriceLineRef.current = null;
 
       if (showRRBoxes && prediction) {
-        const setups: ModelSetupItem[] | undefined = prediction.contributing_features?.all_model_setups;
-        const activeSetup = setups?.find((s) => s.model_key === activeBoxModel) || {
-          entry_price: prediction.entry_reference_price,
-          stop_loss: prediction.stop_loss_reference,
-          take_profit: prediction.take_profit_reference,
-          risk_reward_ratio: prediction.risk_reward_ratio,
-        };
+        try {
+          const setups: ModelSetupItem[] | undefined = prediction.contributing_features?.all_model_setups;
+          const activeSetup = (Array.isArray(setups) && setups.find((s) => s.model_key === activeBoxModel)) || {
+            entry_price: prediction.entry_reference_price,
+            stop_loss: prediction.stop_loss_reference,
+            take_profit: prediction.take_profit_reference,
+            risk_reward_ratio: prediction.risk_reward_ratio,
+          };
 
-        tpPriceLineRef.current = candleSeriesRef.current.createPriceLine({
-          price: activeSetup.take_profit,
-          color: '#10b981',
-          lineWidth: 2,
-          lineStyle: 0,
-          axisLabelVisible: true,
-          title: `TP $${activeSetup.take_profit.toFixed(2)}`,
-        });
+          if (typeof activeSetup?.take_profit === 'number' && !isNaN(activeSetup.take_profit)) {
+            tpPriceLineRef.current = candleSeriesRef.current.createPriceLine({
+              price: activeSetup.take_profit,
+              color: '#10b981',
+              lineWidth: 2,
+              lineStyle: 0,
+              axisLabelVisible: true,
+              title: `TP $${activeSetup.take_profit.toFixed(2)}`,
+            });
+          }
 
-        entryPriceLineRef.current = candleSeriesRef.current.createPriceLine({
-          price: activeSetup.entry_price,
-          color: '#f59e0b',
-          lineWidth: 2,
-          lineStyle: 2,
-          axisLabelVisible: true,
-          title: `ENTRY $${activeSetup.entry_price.toFixed(2)}`,
-        });
+          if (typeof activeSetup?.entry_price === 'number' && !isNaN(activeSetup.entry_price)) {
+            entryPriceLineRef.current = candleSeriesRef.current.createPriceLine({
+              price: activeSetup.entry_price,
+              color: '#f59e0b',
+              lineWidth: 2,
+              lineStyle: 2,
+              axisLabelVisible: true,
+              title: `ENTRY $${activeSetup.entry_price.toFixed(2)}`,
+            });
+          }
 
-        slPriceLineRef.current = candleSeriesRef.current.createPriceLine({
-          price: activeSetup.stop_loss,
-          color: '#ef4444',
-          lineWidth: 2,
-          lineStyle: 0,
-          axisLabelVisible: true,
-          title: `SL $${activeSetup.stop_loss.toFixed(2)}`,
-        });
+          if (typeof activeSetup?.stop_loss === 'number' && !isNaN(activeSetup.stop_loss)) {
+            slPriceLineRef.current = candleSeriesRef.current.createPriceLine({
+              price: activeSetup.stop_loss,
+              color: '#ef4444',
+              lineWidth: 2,
+              lineStyle: 0,
+              axisLabelVisible: true,
+              title: `SL $${activeSetup.stop_loss.toFixed(2)}`,
+            });
+          }
+        } catch (e) {}
       }
     }
 
-    updateBoxCoordinates();
+    try {
+      updateBoxCoordinates();
+    } catch (e) {}
   }, [candles, showEMAs, markerFilter, showRRBoxes, activeBoxModel, features, prediction, updateBoxCoordinates]);
 
   const lastCandleDate =

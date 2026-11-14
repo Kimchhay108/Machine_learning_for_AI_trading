@@ -80,7 +80,7 @@ export default function AIAnalysisCard({ prediction, loading }: AIAnalysisCardPr
       why_explanation:
         direction === 'WAIT'
           ? `Ensemble recommends WAIT: confidence (${(confidence * 100).toFixed(1)}%) is below selective threshold. Preserving capital until sub-models reach confluence.`
-          : `Multi-model stacked consensus triggers ${direction} with ${(confidence * 100).toFixed(1)}% confidence. Dynamic ATR Stop Loss at $${stop_loss_reference.toFixed(2)} with 2.0 R:R Target at $${take_profit_reference.toFixed(2)}.`,
+          : `Multi-model stacked consensus triggers ${direction} with ${(confidence * 100).toFixed(1)}% confidence. Dynamic ATR Stop Loss at $${(stop_loss_reference || 0).toFixed(2)} with 2.0 R:R Target at $${(take_profit_reference || 0).toFixed(2)}.`,
       key_drivers: ['Meta-Model Stacking', `Confidence: ${(confidence * 100).toFixed(1)}%`, `Regime: ${market_regime}`],
     },
     {
@@ -344,17 +344,23 @@ export default function AIAnalysisCard({ prediction, loading }: AIAnalysisCardPr
                     <div className="grid grid-cols-4 gap-2 text-center text-[11px] font-mono">
                       <div className="bg-dark-800 p-1.5 rounded border border-dark-750">
                         <span className="text-[10px] text-gray-400 block font-sans">Entry Price</span>
-                        <span className="text-white font-bold">${setup.entry_price.toFixed(2)}</span>
+                        <span className="text-white font-bold">
+                          ${typeof setup.entry_price === 'number' ? setup.entry_price.toFixed(2) : setup.entry_price}
+                        </span>
                       </div>
 
                       <div className="bg-dark-800 p-1.5 rounded border border-dark-750">
                         <span className="text-[10px] text-gray-400 block font-sans">Stop Loss</span>
-                        <span className="text-bear-400 font-bold">${setup.stop_loss.toFixed(2)}</span>
+                        <span className="text-bear-400 font-bold">
+                          ${typeof setup.stop_loss === 'number' ? setup.stop_loss.toFixed(2) : setup.stop_loss}
+                        </span>
                       </div>
 
                       <div className="bg-dark-800 p-1.5 rounded border border-dark-750">
                         <span className="text-[10px] text-gray-400 block font-sans">Take Profit</span>
-                        <span className="text-bull-400 font-bold">${setup.take_profit.toFixed(2)}</span>
+                        <span className="text-bull-400 font-bold">
+                          ${typeof setup.take_profit === 'number' ? setup.take_profit.toFixed(2) : setup.take_profit}
+                        </span>
                       </div>
 
                       <div className="bg-dark-800 p-1.5 rounded border border-dark-750">
