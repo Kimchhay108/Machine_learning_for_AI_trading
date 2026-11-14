@@ -28,6 +28,7 @@ class Settings(BaseSettings):
     DUCKDB_PATH: Path = BASE_DIR / "data" / "market_data.duckdb"
     MODELS_DIR: Path = BASE_DIR / "data" / "models"
     BACKTEST_DIR: Path = BASE_DIR / "data" / "backtests"
+    PAPER_DIR: Path = BASE_DIR / "data" / "paper"
 
     # Dukascopy API Settings
     DUKASCOPY_BASE_URL: str = "https://jetta.dukascopy.com/v1"
@@ -65,6 +66,7 @@ class Settings(BaseSettings):
             self.QUALITY_REPORTS_DIR,
             self.MODELS_DIR,
             self.BACKTEST_DIR,
+            self.PAPER_DIR,
         ]
         for d in directories:
             d.mkdir(parents=True, exist_ok=True)

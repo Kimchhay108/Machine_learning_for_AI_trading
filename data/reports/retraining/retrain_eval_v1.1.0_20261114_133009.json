@@ -1,0 +1,67 @@
+{
+  "champion_version": "v1.0.0",
+  "challenger_version": "v1.1.0",
+  "champion_metrics": {
+    "total_samples": 1877,
+    "accuracy": 0.3687,
+    "precision": 0.3537,
+    "recall": 0.3687,
+    "f1_score": 0.3476,
+    "confusion_matrix": [
+      [
+        242,
+        74,
+        433
+      ],
+      [
+        129,
+        43,
+        244
+      ],
+      [
+        208,
+        97,
+        407
+      ]
+    ],
+    "expected_calibration_error": 0.3415,
+    "selective_threshold": 0.5,
+    "selective_samples": 1598,
+    "coverage_pct": 85.14,
+    "selective_accuracy": 0.378,
+    "selective_precision": 0.3562
+  },
+  "challenger_metrics": {
+    "total_samples": 1877,
+    "accuracy": 0.3687,
+    "precision": 0.3537,
+    "recall": 0.3687,
+    "f1_score": 0.3476,
+    "confusion_matrix": [
+      [
+        242,
+        74,
+        433
+      ],
+      [
+        129,
+        43,
+        244
+      ],
+      [
+        208,
+        97,
+        407
+      ]
+    ],
+    "expected_calibration_error": 0.3415,
+    "selective_threshold": 0.5,
+    "selective_samples": 1598,
+    "coverage_pct": 85.14,
+    "selective_accuracy": 0.378,
+    "selective_precision": 0.3562
+  },
+  "promoted": true,
+  "rejection_reasons": [],
+  "timestamp": "2026-11-14T13:30:09.208877Z"
+}

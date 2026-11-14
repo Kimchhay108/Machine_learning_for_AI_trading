@@ -16,6 +16,7 @@ import ModelPerformanceView from '../components/ModelPerformanceView';
 import TrainingCenterView from '../components/TrainingCenterView';
 import PredictionHistoryView from '../components/PredictionHistoryView';
 import SettingsView from '../components/SettingsView';
+import PaperTradingView from '../components/PaperTradingView';
 import {
   Activity,
   BarChart3,
@@ -27,6 +28,7 @@ import {
   Settings,
   ShieldAlert,
   Sparkles,
+  Wallet,
 } from 'lucide-react';
 
 type TabType =
@@ -37,6 +39,7 @@ type TabType =
   | 'performance'
   | 'training'
   | 'backtest'
+  | 'paper'
   | 'settings';
 
 export default function DashboardPage() {
@@ -146,7 +149,8 @@ export default function DashboardPage() {
           { id: 'performance', label: '5. Model Performance', icon: Layers },
           { id: 'training', label: '6. Training Center', icon: Cpu },
           { id: 'backtest', label: '7. Backtesting Lab', icon: Sparkles },
-          { id: 'settings', label: '8. Settings', icon: Settings },
+          { id: 'paper', label: '8. Paper Trading', icon: Wallet },
+          { id: 'settings', label: '9. Settings', icon: Settings },
         ].map((tab) => {
           const Icon = tab.icon;
           const isActive = activeTab === tab.id;
@@ -211,6 +215,8 @@ export default function DashboardPage() {
         {activeTab === 'training' && <TrainingCenterView />}
 
         {activeTab === 'backtest' && <BacktestLab />}
+
+        {activeTab === 'paper' && <PaperTradingView />}
 
         {activeTab === 'settings' && <SettingsView />}
       </main>

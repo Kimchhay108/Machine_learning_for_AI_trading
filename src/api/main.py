@@ -6,7 +6,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from src.api.dependencies import get_duckdb_manager, get_prediction_engine
-from src.api.routers import ai, backtest, market
+from src.api.routers import ai, backtest, market, paper
 from src.core.config import settings
 from src.core.logger import get_logger
 
@@ -55,6 +55,7 @@ app.add_middleware(
 app.include_router(market.router)
 app.include_router(ai.router)
 app.include_router(backtest.router)
+app.include_router(paper.router)
 
 
 @app.get("/", tags=["Health"])
