@@ -70,3 +70,19 @@ class TestPipelineCLI:
             code = main()
             assert code == 0
             assert mock_cmd.called
+
+    @patch("src.cli.pipeline_cli.cmd_retrain")
+    def test_cli_retrain_args(self, mock_cmd):
+        mock_cmd.return_value = 0
+        with patch("sys.argv", ["pipeline_cli.py", "retrain", "--challenger-version", "v1.2.0"]):
+            code = main()
+            assert code == 0
+            assert mock_cmd.called
+
+    @patch("src.cli.pipeline_cli.cmd_api")
+    def test_cli_api_args(self, mock_cmd):
+        mock_cmd.return_value = 0
+        with patch("sys.argv", ["pipeline_cli.py", "api", "--port", "8000"]):
+            code = main()
+            assert code == 0
+            assert mock_cmd.called

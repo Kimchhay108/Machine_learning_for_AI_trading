@@ -396,6 +396,74 @@ def cmd_query(args: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_api(args: argparse.Namespace) -> int:
+    """Launch FastAPI backend server with OpenAPI documentation."""
+    import uvicorn
+    print(f"\n" + "=" * 65)
+    print(f"  LAUNCHING FASTAPI BACKEND SERVER")
+    print(f"  Local URL:  http://{args.host}:{args.port}")
+    print(f"  API Docs:   http://{args.host}:{args.port}/docs")
+    print("=" * 65 + "\n")
+    uvicorn.run("src.api.main:app", host=args.host, port=args.port, reload=args.reload)
+    return 0
+
+
+def cmd_retrain(args: argparse.Namespace) -> int:
+    """Execute continuous retraining challenger vs champion evaluation and promotion."""
+    from src.retrain.orchestrator import ContinuousRetrainingOrchestrator
+
+    features_dir = settings.FEATURES_DIR / args.instrument.lower()
+    labels_dir = settings.LABELS_DIR / args.instrument.lower()
+    feat_path = features_dir / "m5_features.parquet"
+    lbl_path = labels_dir / "m5_labels.parquet"
+
+    if not feat_path.exists() or not lbl_path.exists():
+        print("Error: Feature or label datasets missing. Run 'features' and 'labels' first.")
+        return 1
+
+    df_feats = pd.read_parquet(feat_path)
+    df_lbls = pd.read_parquet(lbl_path)
+    target_col = "label_dir_ternary_15m"
+    y = (df_lbls[target_col] + 1).astype(int)
+
+    drop_cols = ["timestamp", "instrument", "timeframe", "data_source"]
+    X = df_feats[[c for c in df_feats.columns if c not in drop_cols]].copy()
+
+    n = len(X)
+    train_end = int(n * 0.70)
+    test_start = train_end + 12
+
+    X_train, y_train = X.iloc[:train_end], y.iloc[:train_end]
+    X_test, y_test = X.iloc[test_start:], y.iloc[test_start:]
+
+    print(f"\nTraining Challenger Candidate Model: {args.challenger_version}...")
+    challenger = EnsemblePredictionModel(confidence_threshold=args.threshold)
+    challenger.fit(X_train, y_train)
+
+    orchestrator = ContinuousRetrainingOrchestrator(
+        min_selective_accuracy=args.min_accuracy,
+        min_coverage_pct=args.min_coverage,
+    )
+
+    eval_result = orchestrator.evaluate_and_promote(
+        challenger=challenger,
+        challenger_version=args.challenger_version,
+        champion_version=args.champion_version,
+        X_test=X_test,
+        y_test=y_test,
+    )
+
+    print("\n" + "=" * 65)
+    print(f"  CHAMPION-CHALLENGER RETRAINING AUDIT")
+    print(f"  Champion Version:   {eval_result.champion_version}")
+    print(f"  Challenger Version: {eval_result.challenger_version}")
+    print(f"  Outcome:            {'PROMOTED TO PRODUCTION' if eval_result.promoted else 'REJECTED'}")
+    if eval_result.rejection_reasons:
+        print(f"  Rejection Reasons:  {', '.join(eval_result.rejection_reasons)}")
+    print("=" * 65 + "\n")
+    return 0 if eval_result.promoted else 1
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(
         description="XAUUSD AI Trading Platform - Data Pipeline CLI",
@@ -458,6 +526,23 @@ def main() -> int:
     p_bt.add_argument("--version", default="v1.0.0", help="Model registry version tag")
     p_bt.add_argument("--threshold", type=float, default=0.55, help="Confidence threshold")
     p_bt.set_defaults(func=cmd_backtest)
+
+    # Subcommand: retrain
+    p_rt = subparsers.add_parser("retrain", help="Champion-challenger continuous retraining and evaluation")
+    p_rt.add_argument("--instrument", default=DEFAULT_INSTRUMENT, help="Instrument ticker")
+    p_rt.add_argument("--champion-version", default="v1.0.0", help="Current production model version")
+    p_rt.add_argument("--challenger-version", default="v1.1.0", help="New candidate model version")
+    p_rt.add_argument("--threshold", type=float, default=0.50, help="Confidence threshold")
+    p_rt.add_argument("--min-accuracy", type=float, default=0.35, help="Minimum selective accuracy requirement")
+    p_rt.add_argument("--min-coverage", type=float, default=15.0, help="Minimum coverage percentage requirement")
+    p_rt.set_defaults(func=cmd_retrain)
+
+    # Subcommand: api
+    p_api = subparsers.add_parser("api", help="Start FastAPI backend server")
+    p_api.add_argument("--host", default="0.0.0.0", help="Bind host")
+    p_api.add_argument("--port", type=int, default=8000, help="Bind port")
+    p_api.add_argument("--reload", action="store_true", help="Auto-reload on code change")
+    p_api.set_defaults(func=cmd_api)
 
     args = parser.parse_args()
     return args.func(args)
