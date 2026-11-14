@@ -15,6 +15,7 @@ export default function TrainingCenterView() {
   const [threshold, setThreshold] = useState(0.50);
   const [testRatio, setTestRatio] = useState(0.30);
   const [adminKey, setAdminKey] = useState('xauusd-admin-secret-key');
+  const [learnFromMistakes, setLearnFromMistakes] = useState(true);
   const [statusMsg, setStatusMsg] = useState<string | null>(null);
 
   const loadModels = () => {
@@ -39,7 +40,13 @@ export default function TrainingCenterView() {
     setLoading(true);
     setStatusMsg(null);
     try {
-      const res = await triggerRetrain(newVersion, Number(threshold), Number(testRatio), adminKey);
+      const res = await triggerRetrain(
+        newVersion,
+        Number(threshold),
+        Number(testRatio),
+        adminKey,
+        learnFromMistakes
+      );
       setStatusMsg(`Success! ${res.message}`);
       loadModels();
     } catch (err: any) {
@@ -107,6 +114,24 @@ export default function TrainingCenterView() {
               className="w-full bg-dark-800 border border-dark-700 rounded px-3 py-2 text-white font-mono"
             />
           </div>
+        </div>
+
+        {/* AI Continuous Learning & Hard-Negative Mining Option */}
+        <div className="mb-4 p-3 bg-dark-850 border border-dark-750 rounded-lg">
+          <label className="flex items-center space-x-2 text-gray-200 cursor-pointer select-none">
+            <input
+              type="checkbox"
+              checked={learnFromMistakes}
+              onChange={(e) => setLearnFromMistakes(e.target.checked)}
+              className="rounded bg-dark-800 border-dark-600 text-gold-500 focus:ring-0 w-4 h-4"
+            />
+            <span className="font-semibold text-gold-400 text-xs">
+              🧠 AI Hard-Negative Mistake Mining & Continuous Learning
+            </span>
+          </label>
+          <p className="text-[11px] text-gray-400 mt-1 pl-6">
+            When enabled, historical failure trap candles (Volatility Spikes, Low-Momentum Chop, Climax Exhaustion) are re-weighted with 2.5x sample penalties, forcing the gradient boosted decision trees to actively avoid repeating those false-breakout patterns.
+          </p>
         </div>
 
         <div className="flex items-center justify-between pt-2 border-t border-dark-800">

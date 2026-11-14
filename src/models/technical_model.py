@@ -64,6 +64,7 @@ class TechnicalAnalysisModel:
         self,
         X: pd.DataFrame,
         y: pd.Series,
+        sample_weight: Optional[np.ndarray] = None,
         eval_set: Optional[List[Tuple[pd.DataFrame, pd.Series]]] = None,
     ) -> "TechnicalAnalysisModel":
         """Fit XGBoost model on technical features.
@@ -77,7 +78,7 @@ class TechnicalAnalysisModel:
         if eval_set:
             prepared_eval_set = [(self._prepare_features(ex), ey) for (ex, ey) in eval_set]
 
-        self.model.fit(X_clean, y, eval_set=prepared_eval_set, verbose=False)
+        self.model.fit(X_clean, y, sample_weight=sample_weight, eval_set=prepared_eval_set, verbose=False)
         self.is_fitted = True
         return self
 

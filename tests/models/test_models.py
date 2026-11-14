@@ -123,3 +123,16 @@ class TestMachineLearningSuite:
         assert pred.entry_reference_price > 0
         assert pred.stop_loss_reference != pred.take_profit_reference
         assert "submodel_agreement" in pred.contributing_features
+
+    def test_ensemble_fit_with_sample_weights(self):
+        """Verify hard-negative mistake weighting fits without errors across all submodels."""
+        weights = np.ones(len(self.df), dtype=np.float32)
+        weights[0:10] = 2.5  # Penalized mistake samples
+
+        ensemble = EnsemblePredictionModel(confidence_threshold=0.50)
+        ensemble.fit(self.df, self.y, sample_weight=weights, regime_labels=self.y_regime)
+        assert ensemble.is_fitted is True
+
+        decisions, probs, confs = ensemble.predict_decision(self.df)
+        assert len(decisions) == len(self.df)
+        assert set(decisions).issubset({"BUY", "SELL", "WAIT"})

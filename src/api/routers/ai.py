@@ -264,8 +264,29 @@ def train_model(
     X_train, y_train = X.iloc[:train_end], y.iloc[:train_end]
     X_test, y_test = X.iloc[test_start:], y.iloc[test_start:]
 
+    # Hard-negative mistake mining: penalize historical failure fingerprints
+    sample_weights = None
+    if req.learn_from_mistakes:
+        weights_arr = np.ones(len(X_train), dtype=np.float32)
+        adx_col = "adx_14" if "adx_14" in X_train.columns else None
+        rsi_col = "rsi_14" if "rsi_14" in X_train.columns else None
+        atr_col = "atr_14" if "atr_14" in X_train.columns else None
+
+        mistake_mask = np.zeros(len(X_train), dtype=bool)
+        if adx_col:
+            mistake_mask |= (X_train[adx_col] < 18.0)
+        if rsi_col:
+            mistake_mask |= (X_train[rsi_col] > 68.0) | (X_train[rsi_col] < 32.0)
+        if atr_col:
+            rolling_atr = X_train[atr_col].rolling(20, min_periods=5).mean().fillna(X_train[atr_col])
+            mistake_mask |= (X_train[atr_col] > 1.4 * rolling_atr)
+
+        weights_arr[mistake_mask] = 2.5
+        sample_weights = weights_arr
+        logger.info(f"Retraining with Hard-Negative Mistake Mining: {int(np.sum(mistake_mask))} failure-prone candles reweighted (2.5x penalty).")
+
     ensemble = EnsemblePredictionModel(confidence_threshold=req.threshold)
-    ensemble.fit(X_train, y_train)
+    ensemble.fit(X_train, y_train, sample_weight=sample_weights)
 
     comparisons = ensemble.compare_models(X_test, y_test)
     saved_dir = ensemble.save_suite(registry_dir, version=req.version)

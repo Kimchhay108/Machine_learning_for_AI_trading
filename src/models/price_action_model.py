@@ -56,10 +56,15 @@ class PriceActionModel:
         X = X.ffill().bfill().fillna(0.0)
         return X
 
-    def fit(self, X: pd.DataFrame, y: pd.Series) -> "PriceActionModel":
+    def fit(
+        self,
+        X: pd.DataFrame,
+        y: pd.Series,
+        sample_weight: Optional[np.ndarray] = None,
+    ) -> "PriceActionModel":
         X_clean = self._prepare_features(X)
         logger.info(f"Training Model D (Price Action) on {len(X_clean)} samples with {len(X_clean.columns)} features...")
-        self.model.fit(X_clean, y)
+        self.model.fit(X_clean, y, sample_weight=sample_weight)
         self.is_fitted = True
         return self
 

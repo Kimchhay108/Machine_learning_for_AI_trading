@@ -93,6 +93,10 @@ class TrainRequest(BaseModel):
     version: str = Field(default="v1.0.1", description="Model version identifier")
     threshold: float = Field(default=0.50, ge=0.33, le=0.99, description="Confidence threshold for selective abstention")
     test_ratio: float = Field(default=0.30, ge=0.10, le=0.50, description="Out-of-sample test fraction")
+    learn_from_mistakes: bool = Field(
+        default=True,
+        description="Hard-negative mining: penalize historical trade mistake patterns (chop, spikes, exhaustion)",
+    )
 
 
 class TrainResponse(BaseModel):
@@ -120,6 +124,7 @@ class BacktestRequest(BaseModel):
     partial_tp_r: float = Field(default=1.0, description="R:Multiple trigger to take 50% partial profit")
     only_killzones: bool = Field(default=True, description="Execute trades strictly during London (07:00-10:00) & NY (12:00-15:00) Killzones")
     use_h1_gatekeeper: bool = Field(default=True, description="Enforce H1 Macro Trend alignment: Price > H1 200 EMA for BUY, Price < H1 200 EMA for SELL")
+    learn_from_mistakes: bool = Field(default=True, description="AI Failure Memory: Vetoes setups matching historical loss fingerprints (low momentum chop, climax exhaustion, volatility spikes)")
     target_rr: Optional[float] = Field(default=None, description="Optional target Risk:Reward ratio (e.g. 1.2, 1.5, 2.0)")
 
 
@@ -147,6 +152,32 @@ class BacktestComparisonResponse(BaseModel):
     best_model_by_winrate: str
 
 
+class TradeForensicsItemSchema(BaseModel):
+    entry_time: int
+    exit_time: int
+    direction: str
+    entry_price: float
+    exit_price: float
+    pnl_usd: float
+    r_multiple: float
+    exit_reason: str
+    failure_cause: str
+    failure_explanation: str
+    lesson_learned: str
+    market_regime: str
+    adx: float
+    rsi: float
+    atr: float
+
+
+class ForensicsSummarySchema(BaseModel):
+    total_losses_analyzed: int
+    cause_distribution: Dict[str, float]
+    top_failure_cause: str
+    key_lessons: List[str]
+    sample_diagnoses: List[TradeForensicsItemSchema]
+
+
 class TradeRecordSchema(BaseModel):
     entry_time: int
     exit_time: int
@@ -160,6 +191,8 @@ class TradeRecordSchema(BaseModel):
     pnl_pct: float
     r_multiple: float
     exit_reason: str
+    failure_cause: Optional[str] = None
+    lesson_learned: Optional[str] = None
 
 
 class BacktestResponse(BaseModel):
@@ -181,6 +214,7 @@ class BacktestResponse(BaseModel):
     avg_r_multiple: float
     equity_curve: List[float]
     trades: List[TradeRecordSchema]
+    forensics: Optional[ForensicsSummarySchema] = None
 
 
 class PredictionEvaluationRequest(BaseModel):

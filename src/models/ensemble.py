@@ -54,15 +54,16 @@ class EnsemblePredictionModel:
         self,
         X_train: pd.DataFrame,
         y_train: pd.Series,
+        sample_weight: Optional[np.ndarray] = None,
         regime_labels: Optional[pd.Series] = None,
     ) -> "EnsemblePredictionModel":
         """Train all individual models and fit ensemble meta-calibrator."""
         logger.info(f"Training complete model suite on {len(X_train)} samples...")
 
-        # 1. Fit Individual Sub-Models
-        self.model_a.fit(X_train, y_train)
-        self.model_b.fit(X_train, y_train)
-        self.model_d.fit(X_train, y_train)
+        # 1. Fit Individual Sub-Models (with sample_weight for hard-negative mistake learning)
+        self.model_a.fit(X_train, y_train, sample_weight=sample_weight)
+        self.model_b.fit(X_train, y_train, sample_weight=sample_weight)
+        self.model_d.fit(X_train, y_train, sample_weight=sample_weight)
 
         # Fit Regime model if regime labels provided
         if regime_labels is not None:
@@ -83,7 +84,7 @@ class EnsemblePredictionModel:
             max_iter=500,
             random_state=42,
         )
-        self.calibrator.fit(meta_X, y_train)
+        self.calibrator.fit(meta_X, y_train, sample_weight=sample_weight)
         self.is_fitted = True
         logger.info("Ensemble model suite and probability calibrator successfully trained.")
         return self

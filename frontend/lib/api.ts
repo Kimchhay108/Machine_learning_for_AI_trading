@@ -150,6 +150,34 @@ export interface TradeRecord {
   pnl_pct: number;
   r_multiple: number;
   exit_reason: string;
+  failure_cause?: string;
+  lesson_learned?: string;
+}
+
+export interface TradeForensicsItem {
+  entry_time: number;
+  exit_time: number;
+  direction: string;
+  entry_price: number;
+  exit_price: number;
+  pnl_usd: number;
+  r_multiple: number;
+  exit_reason: string;
+  failure_cause: string;
+  failure_explanation: string;
+  lesson_learned: string;
+  market_regime: string;
+  adx: number;
+  rsi: number;
+  atr: number;
+}
+
+export interface ForensicsSummary {
+  total_losses_analyzed: number;
+  cause_distribution: Record<string, number>;
+  top_failure_cause: string;
+  key_lessons: string[];
+  sample_diagnoses: TradeForensicsItem[];
 }
 
 export interface BacktestResponse {
@@ -171,6 +199,7 @@ export interface BacktestResponse {
   avg_r_multiple: number;
   equity_curve: number[];
   trades: TradeRecord[];
+  forensics?: ForensicsSummary;
 }
 
 export interface ModelComparisonItem {
@@ -253,7 +282,8 @@ export async function triggerRetrain(
   version: string,
   threshold: number,
   testRatio: number = 0.3,
-  adminKey: string = 'xauusd-admin-secret-key'
+  adminKey: string = 'xauusd-admin-secret-key',
+  learnFromMistakes: boolean = true
 ): Promise<any> {
   const res = await fetch(`${API_BASE}/api/ai/train`, {
     method: 'POST',
@@ -261,7 +291,12 @@ export async function triggerRetrain(
       'Content-Type': 'application/json',
       'X-Admin-Key': adminKey,
     },
-    body: JSON.stringify({ version, threshold, test_ratio: testRatio }),
+    body: JSON.stringify({
+      version,
+      threshold,
+      test_ratio: testRatio,
+      learn_from_mistakes: learnFromMistakes,
+    }),
   });
   if (!res.ok) {
     const err = await res.json().catch(() => ({ detail: res.statusText }));
@@ -286,6 +321,7 @@ export async function runBacktest(params: {
   partial_tp_r?: number;
   only_killzones?: boolean;
   use_h1_gatekeeper?: boolean;
+  learn_from_mistakes?: boolean;
   target_rr?: number;
 }): Promise<BacktestResponse> {
   const res = await fetch(`${API_BASE}/api/backtest/run`, {
@@ -312,6 +348,7 @@ export async function runBacktestComparison(params?: {
   partial_tp_r?: number;
   only_killzones?: boolean;
   use_h1_gatekeeper?: boolean;
+  learn_from_mistakes?: boolean;
   target_rr?: number;
 }): Promise<BacktestComparisonResponse> {
   const res = await fetch(`${API_BASE}/api/backtest/compare`, {

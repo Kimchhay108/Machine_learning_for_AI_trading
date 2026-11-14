@@ -30,6 +30,7 @@ import {
   BarChart3,
   Sliders,
   Clock,
+  Brain,
 } from 'lucide-react';
 
 export default function BacktestLab() {
@@ -50,6 +51,7 @@ export default function BacktestLab() {
   const [enableBreakeven, setEnableBreakeven] = useState(true);
   const [onlyKillzones, setOnlyKillzones] = useState(true);
   const [useH1Gatekeeper, setUseH1Gatekeeper] = useState(true);
+  const [learnFromMistakes, setLearnFromMistakes] = useState(true);
   const [enablePartialTP, setEnablePartialTP] = useState(true);
   const [targetRR, setTargetRR] = useState<number | undefined>(undefined);
 
@@ -147,6 +149,7 @@ export default function BacktestLab() {
         partial_tp_r: 1.0,
         only_killzones: onlyKillzones,
         use_h1_gatekeeper: useH1Gatekeeper,
+        learn_from_mistakes: learnFromMistakes,
         target_rr: targetRR,
       });
       setResults(res);
@@ -174,6 +177,7 @@ export default function BacktestLab() {
         partial_tp_r: 1.0,
         only_killzones: onlyKillzones,
         use_h1_gatekeeper: useH1Gatekeeper,
+        learn_from_mistakes: learnFromMistakes,
         target_rr: targetRR,
       });
       setComparison(compRes);
@@ -386,6 +390,17 @@ export default function BacktestLab() {
             />
             <span className="font-semibold text-gold-400">⚡ London & NY Killzones Only</span>
             <span className="text-[10px] text-gray-400">(07-10 & 12-15 UTC)</span>
+          </label>
+
+          <label className="flex items-center space-x-2 text-gray-300 cursor-pointer select-none">
+            <input
+              type="checkbox"
+              checked={learnFromMistakes}
+              onChange={(e) => setLearnFromMistakes(e.target.checked)}
+              className="rounded bg-dark-800 border-dark-600 text-gold-500 focus:ring-0 w-3.5 h-3.5"
+            />
+            <span className="font-semibold text-amber-400">🧠 AI Failure Memory & Mistake Filter</span>
+            <span className="text-[10px] text-gray-400">(Vetoes loss patterns: Chop, Spikes, Exhaustion)</span>
           </label>
         </div>
 
@@ -660,6 +675,147 @@ export default function BacktestLab() {
         <div ref={chartContainerRef} className="w-full h-72" />
       </div>
 
+      {/* AI Failure Forensics & Continuous Learning Panel */}
+      {results && results.forensics && results.forensics.total_losses_analyzed > 0 && (
+        <div className="bg-dark-900 border border-amber-500/30 rounded-lg p-5 space-y-4">
+          <div className="flex flex-col md:flex-row md:items-center justify-between gap-2 border-b border-dark-800 pb-3">
+            <div className="flex items-center space-x-2">
+              <Brain className="w-5 h-5 text-amber-400" />
+              <div>
+                <h3 className="text-xs font-bold uppercase tracking-wider text-gray-100 flex items-center space-x-2">
+                  <span>AI Trade Failure Forensics & Self-Correcting Engine</span>
+                  <span className="bg-amber-500/10 text-amber-400 border border-amber-500/30 px-2 py-0.5 rounded text-[10px]">
+                    {results.forensics.total_losses_analyzed} Loss Autopsies Analyzed
+                  </span>
+                </h3>
+                <p className="text-[11px] text-gray-400 mt-0.5">
+                  Post-trade autopsy diagnoses why stop losses were triggered and prevents repeating known failure fingerprints.
+                </p>
+              </div>
+            </div>
+
+            <div className="text-right">
+              <span className="text-[10px] text-gray-400 block">Primary Loss Trigger:</span>
+              <span className="text-xs font-bold text-amber-300 font-mono">
+                {results.forensics.top_failure_cause.replace(/_/g, ' ')}
+              </span>
+            </div>
+          </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            {/* Failure Distribution Breakdown */}
+            <div className="bg-dark-850 border border-dark-750 rounded-lg p-3.5 space-y-2.5">
+              <h4 className="text-[11px] font-bold uppercase tracking-wider text-gray-300 flex items-center space-x-1.5">
+                <AlertTriangle className="w-3.5 h-3.5 text-amber-400" />
+                <span>Loss Root-Cause Fingerprint Distribution</span>
+              </h4>
+              <div className="space-y-2 text-xs">
+                {Object.entries(results.forensics.cause_distribution).map(([cause, pct]) => {
+                  const label = cause.replace(/_/g, ' ');
+                  return (
+                    <div key={cause} className="space-y-1">
+                      <div className="flex justify-between text-[11px]">
+                        <span className="text-gray-300">{label}</span>
+                        <span className="font-mono font-bold text-amber-400">{pct}%</span>
+                      </div>
+                      <div className="w-full bg-dark-800 h-1.5 rounded-full overflow-hidden">
+                        <div
+                          className="bg-amber-500 h-full rounded-full transition-all duration-500"
+                          style={{ width: `${Math.min(100, pct)}%` }}
+                        />
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+
+            {/* Continuous Self-Correction Rules Active */}
+            <div className="bg-dark-850 border border-dark-750 rounded-lg p-3.5 space-y-2.5">
+              <h4 className="text-[11px] font-bold uppercase tracking-wider text-gray-300 flex items-center space-x-1.5">
+                <CheckCircle className="w-3.5 h-3.5 text-emerald-400" />
+                <span>Learned Self-Correction Rules (Veto Filters Active)</span>
+              </h4>
+              <div className="space-y-2 text-[11px]">
+                <div className="p-2 rounded bg-dark-800/80 border border-dark-700/60 flex items-start space-x-2">
+                  <span className="text-emerald-400 font-bold">✓</span>
+                  <div>
+                    <span className="font-semibold text-gray-200">Low-Momentum Chop Filter:</span>
+                    <p className="text-gray-400 text-[10px]">
+                      Vetoes entries when ADX &lt; 18.0 to eliminate sideways consolidation stop-loss whipsaws.
+                    </p>
+                  </div>
+                </div>
+
+                <div className="p-2 rounded bg-dark-800/80 border border-dark-700/60 flex items-start space-x-2">
+                  <span className="text-emerald-400 font-bold">✓</span>
+                  <div>
+                    <span className="font-semibold text-gray-200">Momentum Climax Exhaustion Filter:</span>
+                    <p className="text-gray-400 text-[10px]">
+                      Vetoes BUY when RSI &gt; 68.0 and SELL when RSI &lt; 32.0 to avoid buying tops or selling bottoms.
+                    </p>
+                  </div>
+                </div>
+
+                <div className="p-2 rounded bg-dark-800/80 border border-dark-700/60 flex items-start space-x-2">
+                  <span className="text-emerald-400 font-bold">✓</span>
+                  <div>
+                    <span className="font-semibold text-gray-200">Volatility Expansion Spike Filter:</span>
+                    <p className="text-gray-400 text-[10px]">
+                      Abstains when ATR surges &gt; 1.4x rolling 20-period baseline to avoid high-spread slippage traps.
+                    </p>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          {/* Sample Trade Autopsy Cards */}
+          {results.forensics.sample_diagnoses && results.forensics.sample_diagnoses.length > 0 && (
+            <div className="border-t border-dark-800 pt-3">
+              <h4 className="text-[11px] font-bold uppercase tracking-wider text-gray-300 mb-2.5">
+                Recent Failed Trade Autopsies & Improvement Lessons
+              </h4>
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+                {results.forensics.sample_diagnoses.slice(0, 3).map((item, idx) => (
+                  <div
+                    key={idx}
+                    className="p-3 bg-dark-850/80 border border-dark-700 rounded-lg text-xs space-y-2"
+                  >
+                    <div className="flex items-center justify-between">
+                      <span
+                        className={`px-1.5 py-0.5 rounded text-[10px] font-bold ${
+                          item.direction === 'BUY'
+                            ? 'bg-bull-500/20 text-bull-400'
+                            : 'bg-bear-500/20 text-bear-400'
+                        }`}
+                      >
+                        {item.direction}
+                      </span>
+                      <span className="text-bear-400 font-mono font-bold text-[11px]">
+                        ${item.pnl_usd.toFixed(2)} ({item.r_multiple.toFixed(2)}R)
+                      </span>
+                    </div>
+
+                    <div className="text-[10px] bg-amber-500/10 text-amber-300 border border-amber-500/20 px-2 py-0.5 rounded font-mono">
+                      ⚠️ {item.failure_cause.replace(/_/g, ' ')}
+                    </div>
+
+                    <p className="text-[11px] text-gray-300 leading-tight">
+                      {item.failure_explanation}
+                    </p>
+
+                    <div className="pt-1.5 border-t border-dark-750 text-[10px] text-emerald-400">
+                      💡 <strong>Lesson:</strong> {item.lesson_learned}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+        </div>
+      )}
+
       {/* Simulated Trades Log Table */}
       {results && results.trades && results.trades.length > 0 && (
         <div className="bg-dark-900 border border-dark-700 rounded-lg p-5">
@@ -668,10 +824,10 @@ export default function BacktestLab() {
               Execution Log ({results.trades.length} Completed Positions)
             </h3>
             <span className="text-xs text-gray-400">
-              Stop Loss & Take Profit Levels Set by Model Rules
+              Stop Loss & Take Profit Levels Set by Model Rules | Trade Autopsy Attached to Losses
             </span>
           </div>
-          <div className="overflow-x-auto max-h-72 overflow-y-auto">
+          <div className="overflow-x-auto max-h-80 overflow-y-auto">
             <table className="w-full text-left text-xs">
               <thead className="bg-dark-850 text-gray-400 sticky top-0 border-b border-dark-700">
                 <tr>
@@ -683,6 +839,7 @@ export default function BacktestLab() {
                   <th className="py-2 px-3">PnL ($)</th>
                   <th className="py-2 px-3">R-Multiple</th>
                   <th className="py-2 px-3">Exit Reason</th>
+                  <th className="py-2 px-3">Forensics & Lesson Learned</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-dark-800 text-gray-300 font-mono">
@@ -717,6 +874,23 @@ export default function BacktestLab() {
                       >
                         {t.exit_reason}
                       </span>
+                    </td>
+                    <td className="py-2 px-3 font-sans">
+                      {t.failure_cause ? (
+                        <div className="flex flex-col space-y-0.5">
+                          <span className="text-[10px] font-semibold text-amber-400 flex items-center space-x-1">
+                            <span>⚠️</span>
+                            <span>{t.failure_cause.replace(/_/g, ' ')}</span>
+                          </span>
+                          {t.lesson_learned && (
+                            <span className="text-[9px] text-gray-400 truncate max-w-xs" title={t.lesson_learned}>
+                              💡 {t.lesson_learned}
+                            </span>
+                          )}
+                        </div>
+                      ) : (
+                        <span className="text-[10px] text-emerald-400/80">✓ Validated Trade</span>
+                      )}
                     </td>
                   </tr>
                 ))}
