@@ -156,6 +156,25 @@ export interface BacktestResponse {
   trades: TradeRecord[];
 }
 
+export interface ModelComparisonItem {
+  model_key: string;
+  model_name: string;
+  sl_tp_logic: string;
+  total_trades: number;
+  win_rate_pct: number;
+  total_net_profit: number;
+  return_pct: number;
+  profit_factor: number;
+  max_drawdown_pct: number;
+  avg_r_multiple: number;
+}
+
+export interface BacktestComparisonResponse {
+  results: ModelComparisonItem[];
+  best_model_by_profit: string;
+  best_model_by_winrate: string;
+}
+
 export interface MarketStatus {
   instrument: string;
   is_market_open: boolean;
@@ -231,6 +250,7 @@ export async function triggerRetrain(
 
 export async function runBacktest(params: {
   version?: string;
+  model_type?: string;
   initial_capital?: number;
   spread?: number;
   slippage?: number;
@@ -244,6 +264,24 @@ export async function runBacktest(params: {
     body: JSON.stringify(params),
   });
   if (!res.ok) throw new Error(`Backtest failed: ${res.statusText}`);
+  return res.json();
+}
+
+export async function runBacktestComparison(params?: {
+  version?: string;
+  initial_capital?: number;
+  spread?: number;
+  slippage?: number;
+  risk_per_trade?: number;
+  threshold?: number;
+  max_holding_bars?: number;
+}): Promise<BacktestComparisonResponse> {
+  const res = await fetch(`${API_BASE}/api/backtest/compare`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(params || {}),
+  });
+  if (!res.ok) throw new Error(`Model comparison failed: ${res.statusText}`);
   return res.json();
 }
 

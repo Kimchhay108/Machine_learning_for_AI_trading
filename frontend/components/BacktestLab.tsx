@@ -1,7 +1,14 @@
 'use client';
 
 import React, { useState, useEffect, useRef } from 'react';
-import { BacktestResponse, runBacktest, fetchBacktestResults } from '../lib/api';
+import {
+  BacktestResponse,
+  BacktestComparisonResponse,
+  ModelComparisonItem,
+  runBacktest,
+  fetchBacktestResults,
+  runBacktestComparison,
+} from '../lib/api';
 import {
   createChart,
   IChartApi,
@@ -9,13 +16,29 @@ import {
   ColorType,
   Time,
 } from 'lightweight-charts';
-import { Play, RotateCcw, TrendingUp, AlertTriangle, CheckCircle, Shield } from 'lucide-react';
+import {
+  Play,
+  RotateCcw,
+  TrendingUp,
+  AlertTriangle,
+  CheckCircle,
+  Shield,
+  Layers,
+  Award,
+  Zap,
+  Target,
+  BarChart3,
+  Sliders,
+} from 'lucide-react';
 
 export default function BacktestLab() {
   const [loading, setLoading] = useState(false);
+  const [comparisonLoading, setComparisonLoading] = useState(false);
   const [results, setResults] = useState<BacktestResponse | null>(null);
+  const [comparison, setComparison] = useState<BacktestComparisonResponse | null>(null);
 
-  // Parameter states
+  // Model & Parameter states
+  const [modelType, setModelType] = useState<string>('ensemble');
   const [initialCapital, setInitialCapital] = useState(10000);
   const [spread, setSpread] = useState(0.20);
   const [slippage, setSlippage] = useState(0.05);
@@ -92,7 +115,6 @@ export default function BacktestLab() {
   useEffect(() => {
     if (!areaSeriesRef.current || !results || !results.equity_curve) return;
 
-    // Map equity curve values
     const data = results.equity_curve.map((val, idx) => ({
       time: (idx + 1) as unknown as Time,
       value: val,
@@ -100,10 +122,11 @@ export default function BacktestLab() {
     areaSeriesRef.current.setData(data);
   }, [results]);
 
-  const handleRunSimulation = async () => {
+  const handleRunSimulation = async (selectedModel: string = modelType) => {
     setLoading(true);
     try {
       const res = await runBacktest({
+        model_type: selectedModel,
         initial_capital: Number(initialCapital),
         spread: Number(spread),
         slippage: Number(slippage),
@@ -119,21 +142,94 @@ export default function BacktestLab() {
     }
   };
 
+  const handleRunComparison = async () => {
+    setComparisonLoading(true);
+    try {
+      const compRes = await runBacktestComparison({
+        initial_capital: Number(initialCapital),
+        spread: Number(spread),
+        slippage: Number(slippage),
+        risk_per_trade: Number(riskPct),
+        threshold: Number(threshold),
+        max_holding_bars: Number(maxBars),
+      });
+      setComparison(compRes);
+    } catch (err: any) {
+      alert(`Comparison failed: ${err.message}`);
+    } finally {
+      setComparisonLoading(false);
+    }
+  };
+
+  // Strategy logic description dictionary
+  const strategyDetails: Record<string, { title: string; entry: string; sl: string; tp: string; badge: string }> = {
+    ensemble: {
+      title: 'Model E: Calibrated Multi-Model Ensemble',
+      entry: 'Meta-calibrator stacked consensus of Technical, SMC, and Price Action submodels (P ≥ 50%)',
+      sl: 'Dynamic Volatility Stop: 1.5x ATR buffer from execution fill',
+      tp: 'Volatility Target: 3.0x ATR buffer (2.0 Risk:Reward ratio)',
+      badge: 'bg-indigo-500/20 text-indigo-300 border-indigo-500/30',
+    },
+    smc_ict: {
+      title: 'Model B: Smart Money Concepts & ICT 2022 Mentorship',
+      entry: 'ICT 2022 Mentorship (FVG + Discount/Premium retest), Silver Bullet window, Judas Swing, or Model B agreement',
+      sl: 'Structural Invalidation: Active Swing Low -$0.50 (BUY) / Active Swing High +$0.50 (SELL)',
+      tp: 'Targeting Opposing Liquidity Pool: 2.5x Risk multiple (2.5 Risk:Reward ratio)',
+      badge: 'bg-gold-500/20 text-gold-300 border-gold-500/30',
+    },
+    technical: {
+      title: 'Model A: Technical Momentum (Indicators)',
+      entry: 'Trend EMA 9/20/50/200 alignment + RSI pullbacks (42-58) + MACD histogram directional expansion',
+      sl: 'Volatility Envelope Stop: 1.5x ATR buffer from execution fill',
+      tp: 'Trend Expansion Target: 3.0x ATR buffer (2.0 Risk:Reward ratio)',
+      badge: 'bg-blue-500/20 text-blue-300 border-blue-500/30',
+    },
+    price_action: {
+      title: 'Model D: Price Action & Candlestick Morphology',
+      entry: 'Pin bar rejection wicks, bullish/bearish engulfing candles evaluated by Model D classifier',
+      sl: 'Candle Wick Extreme: Prior Candle Low -$0.50 (BUY) / Candle High +$0.50 (SELL)',
+      tp: 'Key Level Reversal Target: 2.0x Risk multiple (2.0 Risk:Reward ratio)',
+      badge: 'bg-emerald-500/20 text-emerald-300 border-emerald-500/30',
+    },
+  };
+
+  const currentStrategy = strategyDetails[modelType] || strategyDetails['ensemble'];
+
   return (
     <div className="space-y-6">
       {/* Simulation Parameter Controls Bar */}
       <div className="bg-dark-900 border border-dark-700 rounded-lg p-5">
-        <div className="flex items-center justify-between mb-4">
+        <div className="flex flex-col md:flex-row items-start md:items-center justify-between mb-4 gap-2">
           <h2 className="text-sm font-bold uppercase tracking-wider text-gray-200 flex items-center space-x-2">
             <Shield className="w-4 h-4 text-gold-500" />
-            <span>Realistic Execution Assumptions</span>
+            <span>Realistic Backtesting & Model Performance Lab</span>
           </h2>
           <span className="text-xs text-gray-400">
-            Intrabar SL First Conflict Resolution | No Optimistic Assumptions
+            Intrabar SL First Conflict Resolution | Spread & Slippage Applied | Zero Optimistic Bias
           </span>
         </div>
 
-        <div className="grid grid-cols-2 md:grid-cols-6 gap-4 text-xs">
+        <div className="grid grid-cols-2 md:grid-cols-7 gap-4 text-xs">
+          {/* Model Selector */}
+          <div className="col-span-2 md:col-span-2">
+            <label className="text-gray-400 block mb-1 font-semibold flex items-center space-x-1">
+              <Layers className="w-3.5 h-3.5 text-gold-400" />
+              <span>Strategy Model</span>
+            </label>
+            <select
+              value={modelType}
+              onChange={(e) => {
+                setModelType(e.target.value);
+              }}
+              className="w-full bg-dark-800 border border-dark-700 rounded px-2.5 py-1.5 text-white font-medium focus:border-gold-500 outline-none"
+            >
+              <option value="ensemble">Model E: Calibrated Ensemble (Multi-Model)</option>
+              <option value="smc_ict">Model B: SMC & ICT 2022 Mentorship</option>
+              <option value="technical">Model A: Technical Momentum (Indicators)</option>
+              <option value="price_action">Model D: Price Action (Wick Extremes)</option>
+            </select>
+          </div>
+
           <div>
             <label className="text-gray-400 block mb-1">Initial Capital ($)</label>
             <input
@@ -190,25 +286,189 @@ export default function BacktestLab() {
               className="w-full bg-dark-800 border border-dark-700 rounded px-2.5 py-1.5 text-white"
             />
           </div>
+        </div>
 
-          <div className="flex items-end">
-            <button
-              onClick={handleRunSimulation}
-              disabled={loading}
-              className="w-full bg-gold-500 hover:bg-gold-600 disabled:opacity-50 text-dark-950 font-bold py-1.5 px-3 rounded flex items-center justify-center space-x-1.5 transition"
-            >
-              {loading ? (
-                <span>Simulating...</span>
-              ) : (
-                <>
-                  <Play className="w-3.5 h-3.5 fill-current" />
-                  <span>Run Backtest</span>
-                </>
-              )}
-            </button>
+        {/* Action Buttons */}
+        <div className="flex flex-wrap items-center gap-3 mt-4 pt-4 border-t border-dark-800">
+          <button
+            onClick={() => handleRunSimulation(modelType)}
+            disabled={loading}
+            className="bg-gold-500 hover:bg-gold-600 disabled:opacity-50 text-dark-950 font-bold py-2 px-4 rounded text-xs flex items-center space-x-1.5 transition shadow-sm"
+          >
+            {loading ? (
+              <span>Simulating...</span>
+            ) : (
+              <>
+                <Play className="w-3.5 h-3.5 fill-current" />
+                <span>Run {currentStrategy.title.split(':')[0]} Backtest</span>
+              </>
+            )}
+          </button>
+
+          <button
+            onClick={handleRunComparison}
+            disabled={comparisonLoading}
+            className="bg-dark-800 hover:bg-dark-750 border border-gold-500/40 text-gold-400 hover:text-gold-300 font-bold py-2 px-4 rounded text-xs flex items-center space-x-1.5 transition"
+          >
+            {comparisonLoading ? (
+              <span>Comparing 4 Models...</span>
+            ) : (
+              <>
+                <BarChart3 className="w-3.5 h-3.5" />
+                <span>Compare All Models Side-by-Side</span>
+              </>
+            )}
+          </button>
+        </div>
+      </div>
+
+      {/* Model Strategy Specifications Banner */}
+      <div className="bg-dark-900 border border-dark-700 rounded-lg p-4">
+        <div className="flex items-center justify-between mb-2">
+          <div className="flex items-center space-x-2">
+            <span className={`text-[11px] font-bold px-2 py-0.5 rounded border ${currentStrategy.badge}`}>
+              {currentStrategy.title}
+            </span>
+            <span className="text-xs text-gray-400 font-medium">Configured Execution Rules</span>
+          </div>
+          <span className="text-[11px] text-gray-500 font-mono">Out-of-sample Gold M5</span>
+        </div>
+
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-3 text-xs mt-3">
+          <div className="bg-dark-850 p-2.5 rounded border border-dark-800">
+            <span className="text-gray-400 block font-semibold mb-1 flex items-center space-x-1">
+              <Zap className="w-3 h-3 text-gold-400" />
+              <span>Entry Logic</span>
+            </span>
+            <span className="text-gray-200">{currentStrategy.entry}</span>
+          </div>
+
+          <div className="bg-dark-850 p-2.5 rounded border border-dark-800">
+            <span className="text-gray-400 block font-semibold mb-1 flex items-center space-x-1">
+              <Shield className="w-3 h-3 text-bear-400" />
+              <span>Stop-Loss (SL) Rule</span>
+            </span>
+            <span className="text-bear-300">{currentStrategy.sl}</span>
+          </div>
+
+          <div className="bg-dark-850 p-2.5 rounded border border-dark-800">
+            <span className="text-gray-400 block font-semibold mb-1 flex items-center space-x-1">
+              <Target className="w-3 h-3 text-bull-400" />
+              <span>Take-Profit (TP) Rule</span>
+            </span>
+            <span className="text-bull-300">{currentStrategy.tp}</span>
           </div>
         </div>
       </div>
+
+      {/* Side-by-Side Comparative Performance Matrix */}
+      {comparison && (
+        <div className="bg-dark-900 border border-dark-700 rounded-lg p-5 space-y-4">
+          <div className="flex flex-col md:flex-row items-start md:items-center justify-between gap-2">
+            <div>
+              <h3 className="text-xs font-bold uppercase tracking-wider text-white flex items-center space-x-2">
+                <Award className="w-4 h-4 text-gold-400" />
+                <span>Side-by-Side Strategy Comparison</span>
+              </h3>
+              <p className="text-xs text-gray-400 mt-0.5">
+                Evaluated under identical execution frictions ($0.20 spread, $0.05 slippage, same out-of-sample data).
+              </p>
+            </div>
+            <div className="flex items-center space-x-2 text-xs">
+              <span className="bg-bull-500/10 border border-bull-500/30 text-bull-400 px-2 py-0.5 rounded">
+                🏆 Best Profit: <strong>{comparison.best_model_by_profit}</strong>
+              </span>
+              <span className="bg-gold-500/10 border border-gold-500/30 text-gold-400 px-2 py-0.5 rounded">
+                🎯 Best Win Rate: <strong>{comparison.best_model_by_winrate}</strong>
+              </span>
+            </div>
+          </div>
+
+          <div className="overflow-x-auto">
+            <table className="w-full text-left text-xs">
+              <thead className="bg-dark-850 text-gray-400 border-b border-dark-700 font-semibold">
+                <tr>
+                  <th className="py-2.5 px-3">Strategy Model</th>
+                  <th className="py-2.5 px-3">SL & TP Execution Rules</th>
+                  <th className="py-2.5 px-3 text-right">Trades</th>
+                  <th className="py-2.5 px-3 text-right">Win Rate</th>
+                  <th className="py-2.5 px-3 text-right">Net Profit</th>
+                  <th className="py-2.5 px-3 text-right">Return %</th>
+                  <th className="py-2.5 px-3 text-right">Profit Factor</th>
+                  <th className="py-2.5 px-3 text-right">Max DD</th>
+                  <th className="py-2.5 px-3 text-right">Avg R</th>
+                  <th className="py-2.5 px-3 text-center">Action</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-dark-800 text-gray-300">
+                {comparison.results.map((item) => {
+                  const isSelected = modelType === item.model_key;
+                  return (
+                    <tr
+                      key={item.model_key}
+                      className={`hover:bg-dark-850/60 transition ${
+                        isSelected ? 'bg-gold-500/5 border-l-2 border-gold-500' : ''
+                      }`}
+                    >
+                      <td className="py-2.5 px-3 font-semibold text-white">
+                        <div className="flex items-center space-x-1.5">
+                          {isSelected && <span className="text-gold-400">▶</span>}
+                          <span>{item.model_name}</span>
+                        </div>
+                      </td>
+                      <td className="py-2.5 px-3 text-gray-400 text-[11px] max-w-xs truncate" title={item.sl_tp_logic}>
+                        {item.sl_tp_logic}
+                      </td>
+                      <td className="py-2.5 px-3 text-right font-mono">{item.total_trades.toLocaleString()}</td>
+                      <td className="py-2.5 px-3 text-right font-mono font-bold text-white">
+                        {item.win_rate_pct.toFixed(1)}%
+                      </td>
+                      <td
+                        className={`py-2.5 px-3 text-right font-mono font-bold ${
+                          item.total_net_profit >= 0 ? 'text-bull-400' : 'text-bear-400'
+                        }`}
+                      >
+                        {item.total_net_profit >= 0 ? '+' : ''}${item.total_net_profit.toLocaleString()}
+                      </td>
+                      <td
+                        className={`py-2.5 px-3 text-right font-mono ${
+                          item.return_pct >= 0 ? 'text-bull-400' : 'text-bear-400'
+                        }`}
+                      >
+                        {item.return_pct >= 0 ? '+' : ''}{item.return_pct.toFixed(1)}%
+                      </td>
+                      <td className="py-2.5 px-3 text-right font-mono text-gold-400">
+                        {item.profit_factor.toFixed(2)}
+                      </td>
+                      <td className="py-2.5 px-3 text-right font-mono text-bear-400">
+                        -{item.max_drawdown_pct.toFixed(1)}%
+                      </td>
+                      <td className="py-2.5 px-3 text-right font-mono">
+                        {item.avg_r_multiple > 0 ? '+' : ''}{item.avg_r_multiple.toFixed(2)}R
+                      </td>
+                      <td className="py-2.5 px-3 text-center">
+                        <button
+                          onClick={() => {
+                            setModelType(item.model_key);
+                            handleRunSimulation(item.model_key);
+                          }}
+                          className={`px-2 py-1 rounded text-[11px] font-semibold transition ${
+                            isSelected
+                              ? 'bg-gold-500 text-dark-950'
+                              : 'bg-dark-800 hover:bg-dark-750 text-gray-300 border border-dark-700'
+                          }`}
+                        >
+                          {isSelected ? 'Active' : 'Load Model'}
+                        </button>
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
 
       {/* KPI Cards */}
       {results && (
@@ -273,18 +533,28 @@ export default function BacktestLab() {
 
       {/* Equity Curve Canvas */}
       <div className="bg-dark-900 border border-dark-700 rounded-lg p-5">
-        <h3 className="text-xs font-bold uppercase tracking-wider text-gray-300 mb-3">
-          Simulated Equity Curve (Out-of-Sample Period)
-        </h3>
+        <div className="flex items-center justify-between mb-3">
+          <h3 className="text-xs font-bold uppercase tracking-wider text-gray-300">
+            Simulated Equity Curve (Out-of-Sample Period)
+          </h3>
+          <span className="text-xs text-gray-400 font-medium">
+            Active: <strong className="text-gold-400">{currentStrategy.title}</strong>
+          </span>
+        </div>
         <div ref={chartContainerRef} className="w-full h-72" />
       </div>
 
       {/* Simulated Trades Log Table */}
       {results && results.trades && results.trades.length > 0 && (
         <div className="bg-dark-900 border border-dark-700 rounded-lg p-5">
-          <h3 className="text-xs font-bold uppercase tracking-wider text-gray-300 mb-3">
-            Execution Log ({results.trades.length} Completed Positions)
-          </h3>
+          <div className="flex items-center justify-between mb-3">
+            <h3 className="text-xs font-bold uppercase tracking-wider text-gray-300">
+              Execution Log ({results.trades.length} Completed Positions)
+            </h3>
+            <span className="text-xs text-gray-400">
+              Stop Loss & Take Profit Levels Set by Model Rules
+            </span>
+          </div>
           <div className="overflow-x-auto max-h-72 overflow-y-auto">
             <table className="w-full text-left text-xs">
               <thead className="bg-dark-850 text-gray-400 sticky top-0 border-b border-dark-700">

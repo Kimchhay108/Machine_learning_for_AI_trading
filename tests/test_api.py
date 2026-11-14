@@ -169,3 +169,38 @@ class TestAPIEndpoints:
         assert res_cache.status_code == 200
         data_cache = res_cache.json()
         assert data_cache["total_trades"] == data["total_trades"]
+
+    def test_backtest_model_types(self, client: TestClient):
+        """Verify backtest runs with specific sub-models."""
+        for m_type in ["smc_ict", "technical", "price_action"]:
+            req = {
+                "version": "v1.0.0",
+                "model_type": m_type,
+                "initial_capital": 10000.0,
+                "threshold": 0.50,
+            }
+            res = client.post("/api/backtest/run", json=req)
+            assert res.status_code == 200
+            data = res.json()
+            assert data["initial_balance"] == 10000.0
+            assert "total_trades" in data
+            assert len(data["equity_curve"]) > 0
+
+    def test_backtest_compare(self, client: TestClient):
+        """Verify comparative backtesting endpoint runs all 4 models side-by-side."""
+        res = client.post("/api/backtest/compare", json={"version": "v1.0.0", "threshold": 0.50})
+        assert res.status_code == 200
+        data = res.json()
+        assert "results" in data
+        assert len(data["results"]) == 4
+        keys = [item["model_key"] for item in data["results"]]
+        assert "ensemble" in keys
+        assert "smc_ict" in keys
+        assert "technical" in keys
+        assert "price_action" in keys
+        assert "best_model_by_profit" in data
+        assert "best_model_by_winrate" in data
+        for item in data["results"]:
+            assert item["total_trades"] >= 0
+            assert "sl_tp_logic" in item
+

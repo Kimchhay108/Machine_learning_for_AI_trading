@@ -106,12 +106,32 @@ class TrainResponse(BaseModel):
 
 class BacktestRequest(BaseModel):
     version: str = Field(default="v1.0.0", description="Model version to use")
+    model_type: str = Field(default="ensemble", description="Strategy to backtest: 'ensemble', 'smc_ict', 'technical', 'price_action'")
     initial_capital: float = Field(default=10000.0, ge=100.0)
     spread: float = Field(default=0.20, ge=0.0, description="Bid-ask spread in USD")
     slippage: float = Field(default=0.05, ge=0.0, description="Slippage in USD")
     risk_per_trade: float = Field(default=0.01, ge=0.001, le=0.10, description="Risk fraction per trade (e.g. 0.01 = 1%)")
     threshold: float = Field(default=0.45, ge=0.33, le=0.95)
     max_holding_bars: int = Field(default=24, ge=1, le=200)
+
+
+class ModelComparisonItem(BaseModel):
+    model_key: str
+    model_name: str
+    sl_tp_logic: str
+    total_trades: int
+    win_rate_pct: float
+    total_net_profit: float
+    return_pct: float
+    profit_factor: float
+    max_drawdown_pct: float
+    avg_r_multiple: float
+
+
+class BacktestComparisonResponse(BaseModel):
+    results: List[ModelComparisonItem]
+    best_model_by_profit: str
+    best_model_by_winrate: str
 
 
 class TradeRecordSchema(BaseModel):
