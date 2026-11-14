@@ -29,6 +29,7 @@ import {
   Target,
   BarChart3,
   Sliders,
+  Clock,
 } from 'lucide-react';
 
 export default function BacktestLab() {
@@ -39,6 +40,7 @@ export default function BacktestLab() {
 
   // Model & Parameter states
   const [modelType, setModelType] = useState<string>('ensemble');
+  const [timeframe, setTimeframe] = useState<string>('M5');
   const [initialCapital, setInitialCapital] = useState(10000);
   const [spread, setSpread] = useState(0.20);
   const [slippage, setSlippage] = useState(0.05);
@@ -127,6 +129,7 @@ export default function BacktestLab() {
     try {
       const res = await runBacktest({
         model_type: selectedModel,
+        timeframe: timeframe,
         initial_capital: Number(initialCapital),
         spread: Number(spread),
         slippage: Number(slippage),
@@ -146,6 +149,7 @@ export default function BacktestLab() {
     setComparisonLoading(true);
     try {
       const compRes = await runBacktestComparison({
+        timeframe: timeframe,
         initial_capital: Number(initialCapital),
         spread: Number(spread),
         slippage: Number(slippage),
@@ -209,7 +213,7 @@ export default function BacktestLab() {
           </span>
         </div>
 
-        <div className="grid grid-cols-2 md:grid-cols-7 gap-4 text-xs">
+        <div className="grid grid-cols-2 md:grid-cols-8 gap-3 text-xs">
           {/* Model Selector */}
           <div className="col-span-2 md:col-span-2">
             <label className="text-gray-400 block mb-1 font-semibold flex items-center space-x-1">
@@ -227,6 +231,22 @@ export default function BacktestLab() {
               <option value="smc_ict">Model B: SMC & ICT 2022 Mentorship</option>
               <option value="technical">Model A: Technical Momentum (Indicators)</option>
               <option value="price_action">Model D: Price Action (Wick Extremes)</option>
+            </select>
+          </div>
+
+          <div>
+            <label className="text-gray-400 block mb-1 font-semibold flex items-center space-x-1">
+              <Clock className="w-3.5 h-3.5 text-gold-400" />
+              <span>Timeframe</span>
+            </label>
+            <select
+              value={timeframe}
+              onChange={(e) => setTimeframe(e.target.value)}
+              className="w-full bg-dark-800 border border-dark-700 rounded px-2.5 py-1.5 text-white font-semibold focus:border-gold-500 outline-none"
+            >
+              <option value="M5">M5 (ICT / Ens Entry)</option>
+              <option value="M15">M15 (Tech / PA Entry)</option>
+              <option value="H1">H1 (Macro Trend Bias)</option>
             </select>
           </div>
 
@@ -389,6 +409,7 @@ export default function BacktestLab() {
               <thead className="bg-dark-850 text-gray-400 border-b border-dark-700 font-semibold">
                 <tr>
                   <th className="py-2.5 px-3">Strategy Model</th>
+                  <th className="py-2.5 px-3">Optimal Timeframe</th>
                   <th className="py-2.5 px-3">SL & TP Execution Rules</th>
                   <th className="py-2.5 px-3 text-right">Trades</th>
                   <th className="py-2.5 px-3 text-right">Win Rate</th>
@@ -415,6 +436,9 @@ export default function BacktestLab() {
                           {isSelected && <span className="text-gold-400">▶</span>}
                           <span>{item.model_name}</span>
                         </div>
+                      </td>
+                      <td className="py-2.5 px-3 text-gold-300 font-mono text-[11px] whitespace-nowrap">
+                        {item.optimal_timeframe || 'M5 Entry'}
                       </td>
                       <td className="py-2.5 px-3 text-gray-400 text-[11px] max-w-xs truncate" title={item.sl_tp_logic}>
                         {item.sl_tp_logic}

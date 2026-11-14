@@ -107,6 +107,7 @@ class TrainResponse(BaseModel):
 class BacktestRequest(BaseModel):
     version: str = Field(default="v1.0.0", description="Model version to use")
     model_type: str = Field(default="ensemble", description="Strategy to backtest: 'ensemble', 'smc_ict', 'technical', 'price_action'")
+    timeframe: str = Field(default="M5", description="Candle timeframe to backtest: 'M5', 'M15', 'H1'")
     initial_capital: float = Field(default=10000.0, ge=100.0)
     spread: float = Field(default=0.20, ge=0.0, description="Bid-ask spread in USD")
     slippage: float = Field(default=0.05, ge=0.0, description="Slippage in USD")
@@ -118,6 +119,7 @@ class BacktestRequest(BaseModel):
 class ModelComparisonItem(BaseModel):
     model_key: str
     model_name: str
+    optimal_timeframe: str = Field(default="M5", description="Recommended timeframe for this model")
     sl_tp_logic: str
     total_trades: int
     win_rate_pct: float

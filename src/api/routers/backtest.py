@@ -252,7 +252,11 @@ def _format_backtest_response(result: BacktestResult) -> BacktestResponse:
 @router.post("/run", response_model=BacktestResponse)
 def run_backtest(req: BacktestRequest) -> BacktestResponse:
     """Execute realistic out-of-sample backtest with model-specific Entry, SL, and TP rules."""
-    feat_path = settings.FEATURES_DIR / "xauusd" / "m5_features.parquet"
+    tf_clean = (getattr(req, "timeframe", None) or "M5").lower().strip()
+    feat_path = settings.FEATURES_DIR / "xauusd" / f"{tf_clean}_features.parquet"
+    if not feat_path.exists():
+        feat_path = settings.FEATURES_DIR / "xauusd" / "m5_features.parquet"
+
     if not feat_path.exists():
         raise HTTPException(
             status_code=404,
@@ -308,7 +312,11 @@ def run_backtest(req: BacktestRequest) -> BacktestResponse:
 
 def _execute_comparison(req: BacktestRequest) -> BacktestComparisonResponse:
     """Execute side-by-side comparison across all sub-models."""
-    feat_path = settings.FEATURES_DIR / "xauusd" / "m5_features.parquet"
+    tf_clean = (getattr(req, "timeframe", None) or "M5").lower().strip()
+    feat_path = settings.FEATURES_DIR / "xauusd" / f"{tf_clean}_features.parquet"
+    if not feat_path.exists():
+        feat_path = settings.FEATURES_DIR / "xauusd" / "m5_features.parquet"
+
     if not feat_path.exists():
         raise HTTPException(
             status_code=404,
@@ -326,6 +334,12 @@ def _execute_comparison(req: BacktestRequest) -> BacktestComparisonResponse:
     test_df = df_feats.iloc[test_start:].reset_index(drop=True)
 
     model_keys = ["ensemble", "smc_ict", "technical", "price_action"]
+    optimal_tfs = {
+        "ensemble": "M5 Entry (H1/M15 Bias)",
+        "smc_ict": "M5 Entry (H1 Liquidity)",
+        "technical": "M15 Entry (H1 Trend)",
+        "price_action": "M15 Entry (Key Levels)",
+    }
     comparison_items: List[ModelComparisonItem] = []
 
     for m_key in model_keys:
@@ -352,6 +366,7 @@ def _execute_comparison(req: BacktestRequest) -> BacktestComparisonResponse:
             ModelComparisonItem(
                 model_key=m_key,
                 model_name=model_name,
+                optimal_timeframe=optimal_tfs.get(m_key, "M5"),
                 sl_tp_logic=sl_tp_logic,
                 total_trades=res.total_trades,
                 win_rate_pct=round(res.win_rate_pct, 2),

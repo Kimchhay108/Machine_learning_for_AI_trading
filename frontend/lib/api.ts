@@ -159,6 +159,7 @@ export interface BacktestResponse {
 export interface ModelComparisonItem {
   model_key: string;
   model_name: string;
+  optimal_timeframe?: string;
   sl_tp_logic: string;
   total_trades: number;
   win_rate_pct: number;
@@ -203,8 +204,8 @@ export async function fetchCandles(
   return res.json();
 }
 
-export async function fetchMarketFeatures(instrument: string = 'XAUUSD', limit: number = 100): Promise<MarketFeaturesResponse> {
-  const res = await fetch(`${API_BASE}/api/market/features?instrument=${instrument}&limit=${limit}`);
+export async function fetchMarketFeatures(instrument: string = 'XAUUSD', timeframe: string = 'M5', limit: number = 100): Promise<MarketFeaturesResponse> {
+  const res = await fetch(`${API_BASE}/api/market/features?instrument=${instrument}&timeframe=${timeframe}&limit=${limit}`);
   if (!res.ok) throw new Error(`Features fetch failed: ${res.statusText}`);
   return res.json();
 }
@@ -251,6 +252,7 @@ export async function triggerRetrain(
 export async function runBacktest(params: {
   version?: string;
   model_type?: string;
+  timeframe?: string;
   initial_capital?: number;
   spread?: number;
   slippage?: number;
@@ -269,6 +271,7 @@ export async function runBacktest(params: {
 
 export async function runBacktestComparison(params?: {
   version?: string;
+  timeframe?: string;
   initial_capital?: number;
   spread?: number;
   slippage?: number;

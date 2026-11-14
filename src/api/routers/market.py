@@ -102,10 +102,16 @@ def get_candles(
 @router.get("/features", response_model=MarketFeaturesResponse)
 def get_market_features(
     instrument: str = Query(DEFAULT_INSTRUMENT, description="Trading instrument"),
+    timeframe: str = Query("M5", description="Timeframe: M5, M15, or H1"),
     limit: int = Query(100, ge=10, le=500, description="Lookback window for SMC patterns"),
 ) -> MarketFeaturesResponse:
     """Fetch current technical indicators, market regime, and detected SMC price structures."""
-    feat_path = settings.FEATURES_DIR / instrument.lower() / "m5_features.parquet"
+    tf_clean = (timeframe or "M5").lower().strip()
+    feat_file = f"{tf_clean}_features.parquet"
+    feat_path = settings.FEATURES_DIR / instrument.lower() / feat_file
+    if not feat_path.exists():
+        feat_path = settings.FEATURES_DIR / instrument.lower() / "m5_features.parquet"
+
     if not feat_path.exists():
         raise HTTPException(
             status_code=404,
@@ -235,7 +241,7 @@ def get_market_features(
 
     return MarketFeaturesResponse(
         instrument=instrument.upper(),
-        timeframe="M5",
+        timeframe=tf_clean.upper(),
         timestamp=ts_sec,
         current_price=round(float(latest["close"]), 2),
         regime=regime,

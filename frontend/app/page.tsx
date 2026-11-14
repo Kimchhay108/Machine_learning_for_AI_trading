@@ -59,7 +59,7 @@ export default function DashboardPage() {
     try {
       const [cRes, fRes, pRes, mRes] = await Promise.all([
         fetchCandles('XAUUSD', tf, 500),
-        fetchMarketFeatures('XAUUSD', 100),
+        fetchMarketFeatures('XAUUSD', tf, 100),
         fetchAIPrediction('XAUUSD', tf),
         fetchMarketStatus('XAUUSD').catch(() => null),
       ]);
