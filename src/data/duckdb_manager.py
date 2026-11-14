@@ -31,9 +31,15 @@ class DuckDBManager:
         self.conn: Optional[duckdb.DuckDBPyConnection] = None
 
     def get_connection(self) -> duckdb.DuckDBPyConnection:
-        """Get or initialize DuckDB connection."""
+        """Get or initialize DuckDB connection with graceful fallback to read-only or in-memory."""
         if self.conn is None:
-            self.conn = duckdb.connect(str(self.db_path))
+            try:
+                self.conn = duckdb.connect(str(self.db_path))
+            except Exception:
+                try:
+                    self.conn = duckdb.connect(str(self.db_path), read_only=True)
+                except Exception:
+                    self.conn = duckdb.connect(":memory:")
         return self.conn
 
     def close(self) -> None:
