@@ -160,7 +160,9 @@ export interface BacktestResponse {
   total_trades: number;
   winning_trades: number;
   losing_trades: number;
+  breakeven_trades?: number;
   win_rate_pct: number;
+  win_rate_with_be_pct?: number;
   profit_factor: number;
   max_drawdown_usd: number;
   max_drawdown_pct: number;
@@ -177,7 +179,11 @@ export interface ModelComparisonItem {
   optimal_timeframe?: string;
   sl_tp_logic: string;
   total_trades: number;
+  winning_trades?: number;
+  losing_trades?: number;
+  breakeven_trades?: number;
   win_rate_pct: number;
+  win_rate_with_be_pct?: number;
   total_net_profit: number;
   return_pct: number;
   profit_factor: number;
@@ -274,6 +280,10 @@ export async function runBacktest(params: {
   risk_per_trade?: number;
   threshold?: number;
   max_holding_bars?: number;
+  enable_breakeven?: boolean;
+  breakeven_r?: number;
+  only_killzones?: boolean;
+  target_rr?: number;
 }): Promise<BacktestResponse> {
   const res = await fetch(`${API_BASE}/api/backtest/run`, {
     method: 'POST',
@@ -293,6 +303,10 @@ export async function runBacktestComparison(params?: {
   risk_per_trade?: number;
   threshold?: number;
   max_holding_bars?: number;
+  enable_breakeven?: boolean;
+  breakeven_r?: number;
+  only_killzones?: boolean;
+  target_rr?: number;
 }): Promise<BacktestComparisonResponse> {
   const res = await fetch(`${API_BASE}/api/backtest/compare`, {
     method: 'POST',

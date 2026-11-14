@@ -35,14 +35,18 @@ def generate_strategy_signals_and_levels(
     threshold: float,
     spread: float,
     slippage: float,
+    only_killzones: bool = True,
+    target_rr: Optional[float] = None,
 ) -> Tuple[List[str], List[float], List[float], str, str]:
     """Generate model-tailored signals, Entry, Stop-Loss, and Take-Profit price levels.
 
-    Distinct Logic per Model:
-    - Model E (Ensemble): Stacking meta-confluence + Dynamic ATR Volatility Stop (1.5x ATR) / 3.0x ATR TP (2.0 R:R).
-    - Model B (SMC & ICT): ICT 2022 FVG / Silver Bullet confluence + Structural Swing Invalidation Stop ($0.50 buffer) & 2.5 R:R Opposing Liquidity TP.
-    - Model A (Technical): EMA Trend & RSI Momentum + Volatility Envelope Stop (1.5x ATR) & 3.0x ATR TP (2.0 R:R).
-    - Model D (Price Action): Candle Rejection Wicks & Pin Bars + Candle Wick Extreme High/Low Stop ($0.50 buffer) & 2.0 R:R Target.
+    Distinct Logic per Model with Institutional High-Win-Rate Edge:
+    - Model E (Ensemble): Stacking meta-confluence + Dynamic ATR Volatility Stop (1.5x ATR).
+    - Model B (SMC & ICT): ICT 2022 FVG / Silver Bullet confluence + Structural Swing Invalidation Stop ($0.50 buffer).
+    - Model A (Technical): EMA Trend & RSI Momentum + Volatility Envelope Stop (1.5x ATR).
+    - Model D (Price Action): Candle Rejection Wicks & Pin Bars + Candle Wick Extreme High/Low Stop ($0.50 buffer).
+    - Session Filter: Restricts entries to London (07:00-10:00 UTC) & NY (12:00-15:00 UTC) Killzones when only_killzones is enabled.
+    - Adaptive R:R: Scales Take Profit based on target_rr (e.g. 1.2, 1.5, 2.0).
     """
     close = test_df["close"].to_numpy()
     high = test_df["high"].to_numpy()
@@ -55,6 +59,14 @@ def generate_strategy_signals_and_levels(
         atr = np.full(n, 2.0)
     atr = np.where(np.isnan(atr) | (atr <= 0), 2.0, atr)
 
+    # Check Killzone filter (London Open: 07:00-10:00 UTC, NY AM: 12:00-15:00 UTC)
+    if "timestamp" in test_df.columns and only_killzones:
+        dt = pd.to_datetime(test_df["timestamp"], unit="s")
+        hours = dt.dt.hour.to_numpy()
+        in_killzones = ((hours >= 7) & (hours <= 10)) | ((hours >= 12) & (hours <= 15))
+    else:
+        in_killzones = np.ones(n, dtype=bool)
+
     signals: List[str] = []
     sl_levels: List[float] = []
     tp_levels: List[float] = []
@@ -62,8 +74,9 @@ def generate_strategy_signals_and_levels(
     m_type = (model_type or "ensemble").lower().strip()
 
     if m_type == "smc_ict":
+        eff_rr = target_rr if target_rr and target_rr > 0 else 2.5
         model_name = "Model B: SMC & ICT 2022 Mentorship"
-        sl_tp_logic = "ICT 2022 FVG / Silver Bullet | SL: Structural Swing Invalidation ($0.50 buffer), TP: 2.5 R:R Opposing Liquidity"
+        sl_tp_logic = f"ICT 2022 FVG / Silver Bullet | SL: Structural Swing Invalidation ($0.50 buffer), TP: {eff_rr} R:R Opposing Liquidity"
 
         prob_b = engine.ensemble.model_b.predict_proba(test_df)
         ict_bull = (
@@ -86,8 +99,8 @@ def generate_strategy_signals_and_levels(
             pb, pl = prob_b[i, 0], prob_b[i, 2]
             cp, ca = close[i], atr[i]
 
-            is_buy = (ict_bull[i] and pl > 0.35) or (pl >= threshold and pl > pb)
-            is_sell = (ict_bear[i] and pb > 0.35) or (pb >= threshold and pb > pl)
+            is_buy = in_killzones[i] and ((ict_bull[i] and pl > 0.40) or (pl >= threshold and pl > pb))
+            is_sell = in_killzones[i] and ((ict_bear[i] and pb > 0.40) or (pb >= threshold and pb > pl))
 
             if is_buy and not is_sell:
                 signals.append("BUY")
@@ -98,7 +111,7 @@ def generate_strategy_signals_and_levels(
                 else:
                     sl = ep - (1.5 * ca)
                 risk = max(ep - sl, 0.50)
-                tp = ep + (2.5 * risk)
+                tp = ep + (eff_rr * risk)
             elif is_sell and not is_buy:
                 signals.append("SELL")
                 ep = cp - slippage
@@ -108,52 +121,60 @@ def generate_strategy_signals_and_levels(
                 else:
                     sl = ep + (1.5 * ca)
                 risk = max(sl - ep, 0.50)
-                tp = ep - (2.5 * risk)
+                tp = ep - (eff_rr * risk)
             else:
                 signals.append("WAIT")
                 sl = cp - (1.5 * ca)
-                tp = cp + (3.75 * ca)
+                tp = cp + (eff_rr * 1.5 * ca)
 
             sl_levels.append(sl)
             tp_levels.append(tp)
 
     elif m_type == "technical":
+        eff_rr = target_rr if target_rr and target_rr > 0 else 2.0
         model_name = "Model A: Technical Momentum (Indicators)"
-        sl_tp_logic = "EMA Trend & RSI Pullbacks | SL: 1.5x ATR Volatility Envelope, TP: 3.0x ATR (2.0 R:R)"
+        sl_tp_logic = f"EMA Trend & RSI Pullbacks | SL: 1.5x ATR Volatility Envelope, TP: {eff_rr} R:R Target"
 
         prob_a = engine.ensemble.model_a.predict_proba(test_df)
         for i in range(n):
             pb, pl = prob_a[i, 0], prob_a[i, 2]
             cp, ca = close[i], atr[i]
 
-            if pl >= threshold and pl > pb:
+            is_buy = in_killzones[i] and (pl >= threshold and pl > pb)
+            is_sell = in_killzones[i] and (pb >= threshold and pb > pl)
+
+            if is_buy:
                 signals.append("BUY")
                 ep = cp + spread + slippage
                 sl = ep - (1.5 * ca)
-                tp = ep + (3.0 * ca)
-            elif pb >= threshold and pb > pl:
+                tp = ep + (eff_rr * 1.5 * ca)
+            elif is_sell:
                 signals.append("SELL")
                 ep = cp - slippage
                 sl = ep + (1.5 * ca)
-                tp = ep - (3.0 * ca)
+                tp = ep - (eff_rr * 1.5 * ca)
             else:
                 signals.append("WAIT")
                 sl = cp - (1.5 * ca)
-                tp = cp + (3.0 * ca)
+                tp = cp + (eff_rr * 1.5 * ca)
 
             sl_levels.append(sl)
             tp_levels.append(tp)
 
     elif m_type == "price_action":
+        eff_rr = target_rr if target_rr and target_rr > 0 else 2.0
         model_name = "Model D: Price Action & Rejection Wicks"
-        sl_tp_logic = "Candle Wick Extremes | SL: Candle High/Low Extreme (-$0.50 buffer), TP: 2.0 R:R Target"
+        sl_tp_logic = f"Candle Wick Extremes | SL: Candle High/Low Extreme (-$0.50 buffer), TP: {eff_rr} R:R Target"
 
         prob_d = engine.ensemble.model_d.predict_proba(test_df)
         for i in range(n):
             pb, pl = prob_d[i, 0], prob_d[i, 2]
             cp, ca, ch, cl = close[i], atr[i], high[i], low[i]
 
-            if pl >= threshold and pl > pb:
+            is_buy = in_killzones[i] and (pl >= threshold and pl > pb)
+            is_sell = in_killzones[i] and (pb >= threshold and pb > pl)
+
+            if is_buy:
                 signals.append("BUY")
                 ep = cp + spread + slippage
                 if 0.40 <= (ep - cl) <= 3.0 * ca:
@@ -161,8 +182,8 @@ def generate_strategy_signals_and_levels(
                 else:
                     sl = ep - (1.2 * ca)
                 risk = max(ep - sl, 0.40)
-                tp = ep + (2.0 * risk)
-            elif pb >= threshold and pb > pl:
+                tp = ep + (eff_rr * risk)
+            elif is_sell:
                 signals.append("SELL")
                 ep = cp - slippage
                 if 0.40 <= (ch - ep) <= 3.0 * ca:
@@ -170,38 +191,41 @@ def generate_strategy_signals_and_levels(
                 else:
                     sl = ep + (1.2 * ca)
                 risk = max(sl - ep, 0.40)
-                tp = ep - (2.0 * risk)
+                tp = ep - (eff_rr * risk)
             else:
                 signals.append("WAIT")
                 sl = cp - (1.2 * ca)
-                tp = cp + (2.4 * ca)
+                tp = cp + (eff_rr * 1.2 * ca)
 
             sl_levels.append(sl)
             tp_levels.append(tp)
 
     else:  # "ensemble" default
+        eff_rr = target_rr if target_rr and target_rr > 0 else 2.0
         model_name = "Model E: Calibrated Multi-Model Ensemble"
-        sl_tp_logic = "Calibrated Meta-Model Stacking | SL: 1.5x ATR Dynamic Stop, TP: 3.0x ATR (2.0 R:R)"
+        sl_tp_logic = f"Calibrated Meta-Model Stacking | SL: 1.5x ATR Dynamic Stop, TP: {eff_rr} R:R Target"
 
         engine.ensemble.confidence_threshold = threshold
         decisions, probs, confs = engine.ensemble.predict_decision(test_df)
-        signals = decisions
 
         for i in range(n):
             cp, ca = close[i], atr[i]
-            sig = signals[i]
+            sig = decisions[i]
 
-            if sig == "BUY":
-                ep = cp + spread + slippage
-                sl = ep - (1.5 * ca)
-                tp = ep + (3.0 * ca)
-            elif sig == "SELL":
-                ep = cp - slippage
-                sl = ep + (1.5 * ca)
-                tp = ep - (3.0 * ca)
+            if in_killzones[i] and sig in ["BUY", "SELL"]:
+                signals.append(sig)
+                if sig == "BUY":
+                    ep = cp + spread + slippage
+                    sl = ep - (1.5 * ca)
+                    tp = ep + (eff_rr * 1.5 * ca)
+                else:
+                    ep = cp - slippage
+                    sl = ep + (1.5 * ca)
+                    tp = ep - (eff_rr * 1.5 * ca)
             else:
+                signals.append("WAIT")
                 sl = cp - (1.5 * ca)
-                tp = cp + (3.0 * ca)
+                tp = cp + (eff_rr * 1.5 * ca)
 
             sl_levels.append(sl)
             tp_levels.append(tp)
@@ -237,7 +261,9 @@ def _format_backtest_response(result: BacktestResult) -> BacktestResponse:
         total_trades=result.total_trades,
         winning_trades=result.winning_trades,
         losing_trades=result.losing_trades,
+        breakeven_trades=getattr(result, "breakeven_trades", 0),
         win_rate_pct=round(result.win_rate_pct, 2),
+        win_rate_with_be_pct=round(getattr(result, "win_rate_with_be_pct", result.win_rate_pct), 2),
         profit_factor=round(result.profit_factor, 3),
         max_drawdown_usd=round(result.max_drawdown_usd, 2),
         max_drawdown_pct=round(result.max_drawdown_pct, 2),
@@ -278,9 +304,11 @@ def run_backtest(req: BacktestRequest) -> BacktestResponse:
         req.model_type,
         test_df,
         engine,
-        req.threshold,
-        req.spread,
-        req.slippage,
+        threshold=req.threshold,
+        spread=req.spread,
+        slippage=req.slippage,
+        only_killzones=getattr(req, "only_killzones", True),
+        target_rr=getattr(req, "target_rr", None),
     )
 
     backtester = RealisticBacktestEngine(
@@ -289,6 +317,8 @@ def run_backtest(req: BacktestRequest) -> BacktestResponse:
         spread_usd=req.spread,
         slippage_usd=req.slippage,
         max_holding_bars=req.max_holding_bars,
+        enable_breakeven=getattr(req, "enable_breakeven", True),
+        breakeven_r=getattr(req, "breakeven_r", 1.0),
     )
 
     result = backtester.run(test_df, signals=signals, sl_levels=sl_levels, tp_levels=tp_levels)
@@ -347,9 +377,11 @@ def _execute_comparison(req: BacktestRequest) -> BacktestComparisonResponse:
             m_key,
             test_df,
             engine,
-            req.threshold,
-            req.spread,
-            req.slippage,
+            threshold=req.threshold,
+            spread=req.spread,
+            slippage=req.slippage,
+            only_killzones=getattr(req, "only_killzones", True),
+            target_rr=getattr(req, "target_rr", None),
         )
 
         backtester = RealisticBacktestEngine(
@@ -358,6 +390,8 @@ def _execute_comparison(req: BacktestRequest) -> BacktestComparisonResponse:
             spread_usd=req.spread,
             slippage_usd=req.slippage,
             max_holding_bars=req.max_holding_bars,
+            enable_breakeven=getattr(req, "enable_breakeven", True),
+            breakeven_r=getattr(req, "breakeven_r", 1.0),
         )
 
         res = backtester.run(test_df, signals=signals, sl_levels=sl_levels, tp_levels=tp_levels)
@@ -369,7 +403,11 @@ def _execute_comparison(req: BacktestRequest) -> BacktestComparisonResponse:
                 optimal_timeframe=optimal_tfs.get(m_key, "M5"),
                 sl_tp_logic=sl_tp_logic,
                 total_trades=res.total_trades,
+                winning_trades=res.winning_trades,
+                losing_trades=res.losing_trades,
+                breakeven_trades=getattr(res, "breakeven_trades", 0),
                 win_rate_pct=round(res.win_rate_pct, 2),
+                win_rate_with_be_pct=round(getattr(res, "win_rate_with_be_pct", res.win_rate_pct), 2),
                 total_net_profit=round(res.total_net_profit, 2),
                 return_pct=round(res.return_pct, 2),
                 profit_factor=round(res.profit_factor, 3),

@@ -45,8 +45,11 @@ export default function BacktestLab() {
   const [spread, setSpread] = useState(0.20);
   const [slippage, setSlippage] = useState(0.05);
   const [riskPct, setRiskPct] = useState(0.01);
-  const [threshold, setThreshold] = useState(0.45);
+  const [threshold, setThreshold] = useState(0.60);
   const [maxBars, setMaxBars] = useState(24);
+  const [enableBreakeven, setEnableBreakeven] = useState(true);
+  const [onlyKillzones, setOnlyKillzones] = useState(true);
+  const [targetRR, setTargetRR] = useState<number | undefined>(undefined);
 
   // Chart ref
   const chartContainerRef = useRef<HTMLDivElement>(null);
@@ -136,6 +139,10 @@ export default function BacktestLab() {
         risk_per_trade: Number(riskPct),
         threshold: Number(threshold),
         max_holding_bars: Number(maxBars),
+        enable_breakeven: enableBreakeven,
+        breakeven_r: 1.0,
+        only_killzones: onlyKillzones,
+        target_rr: targetRR,
       });
       setResults(res);
     } catch (err: any) {
@@ -156,6 +163,10 @@ export default function BacktestLab() {
         risk_per_trade: Number(riskPct),
         threshold: Number(threshold),
         max_holding_bars: Number(maxBars),
+        enable_breakeven: enableBreakeven,
+        breakeven_r: 1.0,
+        only_killzones: onlyKillzones,
+        target_rr: targetRR,
       });
       setComparison(compRes);
     } catch (err: any) {
@@ -297,19 +308,59 @@ export default function BacktestLab() {
           </div>
 
           <div>
-            <label className="text-gray-400 block mb-1">Confidence Threshold</label>
+            <label className="text-gray-400 block mb-1">Conf Threshold</label>
             <input
               type="number"
-              step="0.02"
+              step="0.05"
               value={threshold}
               onChange={(e) => setThreshold(Number(e.target.value))}
-              className="w-full bg-dark-800 border border-dark-700 rounded px-2.5 py-1.5 text-white"
+              className="w-full bg-dark-800 border border-dark-700 rounded px-2.5 py-1.5 text-white font-mono"
             />
+          </div>
+
+          <div>
+            <label className="text-gray-400 block mb-1">Target R:R Mode</label>
+            <select
+              value={targetRR === undefined ? '' : targetRR}
+              onChange={(e) => setTargetRR(e.target.value ? Number(e.target.value) : undefined)}
+              className="w-full bg-dark-800 border border-dark-700 rounded px-2.5 py-1.5 text-white font-medium"
+            >
+              <option value="">Native Default</option>
+              <option value={1.2}>1:1.2 (High-WR Scalp)</option>
+              <option value={1.5}>1:1.5 (Balanced Target)</option>
+              <option value={2.0}>1:2.0 (Standard Target)</option>
+              <option value={2.5}>1:2.5 (ICT Runner)</option>
+            </select>
           </div>
         </div>
 
+        {/* High Win-Rate & Institutional Toggles */}
+        <div className="flex flex-wrap items-center gap-5 mt-3 pt-3 border-t border-dark-800/80 text-xs">
+          <label className="flex items-center space-x-2 text-gray-300 cursor-pointer select-none">
+            <input
+              type="checkbox"
+              checked={enableBreakeven}
+              onChange={(e) => setEnableBreakeven(e.target.checked)}
+              className="rounded bg-dark-800 border-dark-600 text-gold-500 focus:ring-0 w-3.5 h-3.5"
+            />
+            <span className="font-semibold text-emerald-400">🛡️ Move SL to Breakeven at +1.0R</span>
+            <span className="text-[10px] text-gray-400">(Turns reversals into scratch trades)</span>
+          </label>
+
+          <label className="flex items-center space-x-2 text-gray-300 cursor-pointer select-none">
+            <input
+              type="checkbox"
+              checked={onlyKillzones}
+              onChange={(e) => setOnlyKillzones(e.target.checked)}
+              className="rounded bg-dark-800 border-dark-600 text-gold-500 focus:ring-0 w-3.5 h-3.5"
+            />
+            <span className="font-semibold text-gold-400">⚡ London & NY Killzones Only</span>
+            <span className="text-[10px] text-gray-400">(07:00-10:00 & 12:00-15:00 UTC — removes Asian chop)</span>
+          </label>
+        </div>
+
         {/* Action Buttons */}
-        <div className="flex flex-wrap items-center gap-3 mt-4 pt-4 border-t border-dark-800">
+        <div className="flex flex-wrap items-center gap-3 mt-3 pt-3 border-t border-dark-800">
           <button
             onClick={() => handleRunSimulation(modelType)}
             disabled={loading}
@@ -444,8 +495,13 @@ export default function BacktestLab() {
                         {item.sl_tp_logic}
                       </td>
                       <td className="py-2.5 px-3 text-right font-mono">{item.total_trades.toLocaleString()}</td>
-                      <td className="py-2.5 px-3 text-right font-mono font-bold text-white">
-                        {item.win_rate_pct.toFixed(1)}%
+                      <td className="py-2.5 px-3 text-right font-mono">
+                        <div className="font-bold text-white">{item.win_rate_pct.toFixed(1)}%</div>
+                        {item.win_rate_with_be_pct && item.win_rate_with_be_pct > item.win_rate_pct ? (
+                          <div className="text-[10px] text-emerald-400 font-sans font-semibold">
+                            {item.win_rate_with_be_pct.toFixed(1)}% w/ BE
+                          </div>
+                        ) : null}
                       </td>
                       <td
                         className={`py-2.5 px-3 text-right font-mono font-bold ${
@@ -513,8 +569,14 @@ export default function BacktestLab() {
               {results.win_rate_pct}%
             </span>
             <span className="text-[10px] text-gray-400 block mt-0.5">
-              {results.winning_trades}W / {results.losing_trades}L ({results.total_trades} trades)
+              {results.winning_trades}W / {results.losing_trades}L
+              {results.breakeven_trades ? ` / ${results.breakeven_trades} BE` : ''} ({results.total_trades} trades)
             </span>
+            {results.win_rate_with_be_pct && results.win_rate_with_be_pct > results.win_rate_pct ? (
+              <span className="text-[10px] text-emerald-400 block font-semibold mt-0.5">
+                🛡️ Win + BE Protection: {results.win_rate_with_be_pct}%
+              </span>
+            ) : null}
           </div>
 
           <div className="bg-dark-900 border border-dark-700 rounded-lg p-4">

@@ -45,13 +45,15 @@ class BacktestResult:
     total_trades: int
     winning_trades: int
     losing_trades: int
-    win_rate_pct: float
-    profit_factor: float
-    max_drawdown_usd: float
-    max_drawdown_pct: float
-    sharpe_ratio: float
-    avg_trade_usd: float
-    avg_r_multiple: float
+    breakeven_trades: int = 0
+    win_rate_pct: float = 0.0
+    win_rate_with_be_pct: float = 0.0
+    profit_factor: float = 0.0
+    max_drawdown_usd: float = 0.0
+    max_drawdown_pct: float = 0.0
+    sharpe_ratio: float = 0.0
+    avg_trade_usd: float = 0.0
+    avg_r_multiple: float = 0.0
     equity_curve: List[float] = field(default_factory=list)
     trades: List[TradeRecord] = field(default_factory=list)
 
@@ -71,12 +73,16 @@ class RealisticBacktestEngine:
         spread_usd: float = 0.20,             # 20 cents Gold spread
         slippage_usd: float = 0.05,           # 5 cents execution slippage
         max_holding_bars: int = 24,           # 2 hours on M5
+        enable_breakeven: bool = True,        # Move SL to entry once in profit (+1.0R)
+        breakeven_r: float = 1.0,             # Target R:Multiple to trigger Breakeven
     ):
         self.initial_balance = initial_balance
         self.risk_pct_per_trade = risk_pct_per_trade
         self.spread_usd = spread_usd
         self.slippage_usd = slippage_usd
         self.max_holding_bars = max_holding_bars
+        self.enable_breakeven = enable_breakeven
+        self.breakeven_r = breakeven_r
 
     def run(
         self,
@@ -120,7 +126,7 @@ class RealisticBacktestEngine:
             c_ts = timestamp[i]
             c_atr = atr[i] if not np.isnan(atr[i]) and atr[i] > 0 else 2.0
 
-            # 1. Check exit for active open trade
+            # 1. Check exit and Breakeven trailing for active open trade
             if active_trade is not None:
                 entry_dir = active_trade["direction"]
                 entry_p = active_trade["entry_price"]
@@ -128,62 +134,84 @@ class RealisticBacktestEngine:
                 tp = active_trade["tp"]
                 bars_held = i - active_trade["entry_bar"]
                 pos_size = active_trade["size"]
+                init_risk = active_trade.get("initial_risk", max(abs(entry_p - sl), 0.50))
+                be_active = active_trade.get("breakeven_active", False)
 
                 trade_closed = False
                 exit_price = 0.0
                 exit_reason = ""
 
                 if entry_dir == "BUY":
-                    # Check barriers:
-                    hit_sl = c_low <= sl
+                    orig_sl = entry_p - init_risk
+                    hit_orig_sl = c_low <= orig_sl
                     hit_tp = c_high >= tp
 
-                    if hit_sl and hit_tp:
-                        # Conservative rule: stop loss triggered
-                        exit_price = sl - self.slippage_usd
+                    if hit_orig_sl and hit_tp:
+                        # Conservative conflict rule: stop loss triggered
+                        exit_price = orig_sl - self.slippage_usd
                         exit_reason = "STOP_LOSS"
                         trade_closed = True
-                    elif hit_sl:
-                        exit_price = sl - self.slippage_usd
-                        exit_reason = "STOP_LOSS"
-                        trade_closed = True
-                    elif hit_tp:
-                        exit_price = tp - self.slippage_usd
-                        exit_reason = "TAKE_PROFIT"
-                        trade_closed = True
-                    elif bars_held >= self.max_holding_bars:
-                        exit_price = c_close - self.spread_usd
-                        exit_reason = "TIME_LIMIT"
-                        trade_closed = True
+                    else:
+                        # Trailing Breakeven Protection Trigger (+1.0R in profit)
+                        if self.enable_breakeven and not be_active and c_high >= entry_p + (self.breakeven_r * init_risk):
+                            sl = entry_p + self.spread_usd
+                            active_trade["sl"] = sl
+                            active_trade["breakeven_active"] = True
+                            be_active = True
+
+                        hit_sl = c_low <= sl
+                        if hit_sl:
+                            exit_price = sl - self.slippage_usd
+                            exit_reason = "BREAKEVEN" if be_active else "STOP_LOSS"
+                            trade_closed = True
+                        elif hit_tp:
+                            exit_price = tp - self.slippage_usd
+                            exit_reason = "TAKE_PROFIT"
+                            trade_closed = True
+                        elif bars_held >= self.max_holding_bars:
+                            exit_price = c_close - self.spread_usd
+                            exit_reason = "TIME_LIMIT"
+                            trade_closed = True
 
                     if trade_closed:
                         pnl = (exit_price - entry_p) * pos_size
-                        r_mult = (exit_price - entry_p) / (entry_p - sl) if entry_p != sl else 0.0
+                        r_mult = (exit_price - entry_p) / init_risk if init_risk > 0 else 0.0
 
                 else:  # "SELL"
-                    hit_sl = c_high >= sl
+                    orig_sl = entry_p + init_risk
+                    hit_orig_sl = c_high >= orig_sl
                     hit_tp = c_low <= tp
 
-                    if hit_sl and hit_tp:
-                        exit_price = sl + self.slippage_usd
+                    if hit_orig_sl and hit_tp:
+                        # Conservative conflict rule: stop loss triggered
+                        exit_price = orig_sl + self.slippage_usd
                         exit_reason = "STOP_LOSS"
                         trade_closed = True
-                    elif hit_sl:
-                        exit_price = sl + self.slippage_usd
-                        exit_reason = "STOP_LOSS"
-                        trade_closed = True
-                    elif hit_tp:
-                        exit_price = tp + self.slippage_usd
-                        exit_reason = "TAKE_PROFIT"
-                        trade_closed = True
-                    elif bars_held >= self.max_holding_bars:
-                        exit_price = c_close + self.spread_usd
-                        exit_reason = "TIME_LIMIT"
-                        trade_closed = True
+                    else:
+                        # Trailing Breakeven Protection Trigger (+1.0R in profit)
+                        if self.enable_breakeven and not be_active and c_low <= entry_p - (self.breakeven_r * init_risk):
+                            sl = entry_p - self.spread_usd
+                            active_trade["sl"] = sl
+                            active_trade["breakeven_active"] = True
+                            be_active = True
+
+                        hit_sl = c_high >= sl
+                        if hit_sl:
+                            exit_price = sl + self.slippage_usd
+                            exit_reason = "BREAKEVEN" if be_active else "STOP_LOSS"
+                            trade_closed = True
+                        elif hit_tp:
+                            exit_price = tp + self.slippage_usd
+                            exit_reason = "TAKE_PROFIT"
+                            trade_closed = True
+                        elif bars_held >= self.max_holding_bars:
+                            exit_price = c_close + self.spread_usd
+                            exit_reason = "TIME_LIMIT"
+                            trade_closed = True
 
                     if trade_closed:
                         pnl = (entry_p - exit_price) * pos_size
-                        r_mult = (entry_p - exit_price) / (sl - entry_p) if sl != entry_p else 0.0
+                        r_mult = (entry_p - exit_price) / init_risk if init_risk > 0 else 0.0
 
                 if trade_closed:
                     balance += pnl
@@ -230,18 +258,23 @@ class RealisticBacktestEngine:
                             "sl": sl,
                             "tp": tp,
                             "size": size_oz,
+                            "initial_risk": risk_per_oz,
                             "entry_time": c_ts,
                             "entry_bar": i,
+                            "breakeven_active": False,
                         }
 
         # Calculate performance statistics
         total_trades = len(trades)
         wins = [t for t in trades if t.pnl_usd > 0]
-        losses = [t for t in trades if t.pnl_usd < 0]
+        losses = [t for t in trades if t.pnl_usd < 0 and t.exit_reason != "BREAKEVEN"]
+        breakevens = [t for t in trades if t.exit_reason == "BREAKEVEN"]
 
         winning_count = len(wins)
         losing_count = len(losses)
+        breakeven_count = len(breakevens)
         win_rate = (winning_count / total_trades * 100.0) if total_trades > 0 else 0.0
+        win_rate_with_be = ((winning_count + breakeven_count) / total_trades * 100.0) if total_trades > 0 else 0.0
 
         gross_profit = sum(t.pnl_usd for t in wins)
         gross_loss = abs(sum(t.pnl_usd for t in losses))
@@ -277,7 +310,9 @@ class RealisticBacktestEngine:
             total_trades=total_trades,
             winning_trades=winning_count,
             losing_trades=losing_count,
+            breakeven_trades=breakeven_count,
             win_rate_pct=round(win_rate, 2),
+            win_rate_with_be_pct=round(win_rate_with_be, 2),
             profit_factor=round(profit_factor, 3),
             max_drawdown_usd=round(max_dd_usd, 2),
             max_drawdown_pct=round(max_dd_pct, 2),

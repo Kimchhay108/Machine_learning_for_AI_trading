@@ -112,8 +112,12 @@ class BacktestRequest(BaseModel):
     spread: float = Field(default=0.20, ge=0.0, description="Bid-ask spread in USD")
     slippage: float = Field(default=0.05, ge=0.0, description="Slippage in USD")
     risk_per_trade: float = Field(default=0.01, ge=0.001, le=0.10, description="Risk fraction per trade (e.g. 0.01 = 1%)")
-    threshold: float = Field(default=0.45, ge=0.33, le=0.95)
+    threshold: float = Field(default=0.60, ge=0.33, le=0.95)
     max_holding_bars: int = Field(default=24, ge=1, le=200)
+    enable_breakeven: bool = Field(default=True, description="Move Stop Loss to entry once price reaches +1.0R in profit")
+    breakeven_r: float = Field(default=1.0, description="R:Multiple trigger to activate Breakeven")
+    only_killzones: bool = Field(default=True, description="Execute trades strictly during London (07:00-10:00) & NY (12:00-15:00) Killzones")
+    target_rr: Optional[float] = Field(default=None, description="Optional target Risk:Reward ratio (e.g. 1.2, 1.5, 2.0)")
 
 
 class ModelComparisonItem(BaseModel):
@@ -122,7 +126,11 @@ class ModelComparisonItem(BaseModel):
     optimal_timeframe: str = Field(default="M5", description="Recommended timeframe for this model")
     sl_tp_logic: str
     total_trades: int
+    winning_trades: int = 0
+    losing_trades: int = 0
+    breakeven_trades: int = 0
     win_rate_pct: float
+    win_rate_with_be_pct: float = 0.0
     total_net_profit: float
     return_pct: float
     profit_factor: float
@@ -159,7 +167,9 @@ class BacktestResponse(BaseModel):
     total_trades: int
     winning_trades: int
     losing_trades: int
+    breakeven_trades: int = 0
     win_rate_pct: float
+    win_rate_with_be_pct: float = 0.0
     profit_factor: float
     max_drawdown_usd: float
     max_drawdown_pct: float
