@@ -55,8 +55,11 @@ def run_backtest(req: BacktestRequest) -> BacktestResponse:
     result = backtester.run(test_df, signals=decisions)
 
     # Save to cache
-    settings.BACKTEST_DIR.mkdir(parents=True, exist_ok=True)
-    joblib.dump(result, _CACHED_BACKTEST_FILE)
+    try:
+        settings.BACKTEST_DIR.mkdir(parents=True, exist_ok=True)
+        joblib.dump(result, _CACHED_BACKTEST_FILE)
+    except Exception as e:
+        logger.warning(f"Could not cache backtest result to disk: {e}")
 
     trades_schema = [
         TradeRecordSchema(

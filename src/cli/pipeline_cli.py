@@ -311,6 +311,11 @@ def cmd_train(args: argparse.Namespace) -> int:
     # Save trained suite
     saved_dir = ensemble.save_suite(registry_dir, version=args.version)
     print(f"\nTrained Model Suite registered at: {saved_dir}\n")
+
+    # Auto-cleanup temporary training labels & raw download cache to minimize disk usage
+    clean_args = argparse.Namespace(clean_labels=True)
+    cmd_clean(clean_args)
+
     return 0
 
 
@@ -461,6 +466,11 @@ def cmd_retrain(args: argparse.Namespace) -> int:
     if eval_result.rejection_reasons:
         print(f"  Rejection Reasons:  {', '.join(eval_result.rejection_reasons)}")
     print("=" * 65 + "\n")
+
+    # Auto-cleanup temporary labels and raw ingestion cache
+    clean_args = argparse.Namespace(clean_labels=True)
+    cmd_clean(clean_args)
+
     return 0 if eval_result.promoted else 1
 
 
