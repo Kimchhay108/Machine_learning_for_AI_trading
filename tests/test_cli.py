@@ -38,3 +38,35 @@ class TestPipelineCLI:
             code = main()
             assert code == 0
             assert mock_cmd.called
+
+    @patch("src.cli.pipeline_cli.cmd_features")
+    def test_cli_features_args(self, mock_cmd):
+        mock_cmd.return_value = 0
+        with patch("sys.argv", ["pipeline_cli.py", "features", "--instrument", "XAUUSD"]):
+            code = main()
+            assert code == 0
+            assert mock_cmd.called
+
+    @patch("src.cli.pipeline_cli.cmd_labels")
+    def test_cli_labels_args(self, mock_cmd):
+        mock_cmd.return_value = 0
+        with patch("sys.argv", ["pipeline_cli.py", "labels", "--instrument", "XAUUSD"]):
+            code = main()
+            assert code == 0
+            assert mock_cmd.called
+
+    @patch("src.cli.pipeline_cli.cmd_train")
+    def test_cli_train_args(self, mock_cmd):
+        mock_cmd.return_value = 0
+        with patch("sys.argv", ["pipeline_cli.py", "train", "--instrument", "XAUUSD"]):
+            code = main()
+            assert code == 0
+            assert mock_cmd.called
+
+    @patch("src.cli.pipeline_cli.cmd_backtest")
+    def test_cli_backtest_args(self, mock_cmd):
+        mock_cmd.return_value = 0
+        with patch("sys.argv", ["pipeline_cli.py", "backtest", "--instrument", "XAUUSD"]):
+            code = main()
+            assert code == 0
+            assert mock_cmd.called

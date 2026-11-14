@@ -1,0 +1,289 @@
+"""Realistic backtesting simulation engine for quantitative trading strategies.
+
+Models realistic market execution:
+- Spread and slippage modeling
+- Intrabar Stop-Loss and Take-Profit execution
+- Conservative conflict resolution (SL triggered first if both levels touched in the same candle)
+- Fixed fractional position sizing (risk % per trade)
+- Detailed performance reporting (Sharpe, Profit Factor, Max Drawdown, Win Rate)
+"""
+
+from dataclasses import asdict, dataclass, field
+from typing import Any, Dict, List, Optional
+import numpy as np
+import pandas as pd
+
+from src.core.logger import get_logger
+
+logger = get_logger("backtest.engine")
+
+
+@dataclass
+class TradeRecord:
+    """Individual simulated trade execution log."""
+    entry_time: int
+    exit_time: int
+    direction: str                     # "BUY" or "SELL"
+    entry_price: float
+    exit_price: float
+    stop_loss: float
+    take_profit: float
+    position_size_oz: float
+    pnl_usd: float
+    pnl_pct: float
+    r_multiple: float
+    exit_reason: str                   # "TAKE_PROFIT", "STOP_LOSS", "TIME_LIMIT", "EOD"
+
+
+@dataclass
+class BacktestResult:
+    """Comprehensive performance metrics summary."""
+    initial_balance: float
+    final_balance: float
+    total_net_profit: float
+    return_pct: float
+    total_trades: int
+    winning_trades: int
+    losing_trades: int
+    win_rate_pct: float
+    profit_factor: float
+    max_drawdown_usd: float
+    max_drawdown_pct: float
+    sharpe_ratio: float
+    avg_trade_usd: float
+    avg_r_multiple: float
+    equity_curve: List[float] = field(default_factory=list)
+    trades: List[TradeRecord] = field(default_factory=list)
+
+    def to_dict(self) -> Dict[str, Any]:
+        d = asdict(self)
+        d["trades"] = [asdict(t) for t in self.trades]
+        return d
+
+
+class RealisticBacktestEngine:
+    """Simulates realistic trade execution without lookahead or optimistic bias."""
+
+    def __init__(
+        self,
+        initial_balance: float = 10_000.0,
+        risk_pct_per_trade: float = 0.01,    # 1.0% account risk per trade
+        spread_usd: float = 0.20,             # 20 cents Gold spread
+        slippage_usd: float = 0.05,           # 5 cents execution slippage
+        max_holding_bars: int = 24,           # 2 hours on M5
+    ):
+        self.initial_balance = initial_balance
+        self.risk_pct_per_trade = risk_pct_per_trade
+        self.spread_usd = spread_usd
+        self.slippage_usd = slippage_usd
+        self.max_holding_bars = max_holding_bars
+
+    def run(
+        self,
+        df: pd.DataFrame,
+        signals: List[str],  # "BUY", "SELL", or "WAIT" aligned with df
+        sl_levels: Optional[List[float]] = None,
+        tp_levels: Optional[List[float]] = None,
+    ) -> BacktestResult:
+        """Execute candle-by-candle backtest simulation.
+
+        Args:
+            df: Candlestick DataFrame with [timestamp, open, high, low, close, atr_14]
+            signals: List of decisions aligned with each candle
+            sl_levels: Optional explicit stop-loss price levels
+            tp_levels: Optional explicit take-profit price levels
+
+        Returns:
+            BacktestResult with full trade logs and metrics.
+        """
+        n = len(df)
+        balance = self.initial_balance
+        equity_curve = [balance]
+        trades: List[TradeRecord] = []
+
+        active_trade: Optional[Dict[str, Any]] = None
+
+        high = df["high"].to_numpy()
+        low = df["low"].to_numpy()
+        close = df["close"].to_numpy()
+        timestamp = df["timestamp"].to_numpy()
+
+        if "atr_14" in df.columns:
+            atr = df["atr_14"].to_numpy()
+        else:
+            atr = pd.Series(high - low).rolling(14).mean().bfill().to_numpy()
+
+        for i in range(n):
+            c_high = high[i]
+            c_low = low[i]
+            c_close = close[i]
+            c_ts = timestamp[i]
+            c_atr = atr[i] if not np.isnan(atr[i]) and atr[i] > 0 else 2.0
+
+            # 1. Check exit for active open trade
+            if active_trade is not None:
+                entry_dir = active_trade["direction"]
+                entry_p = active_trade["entry_price"]
+                sl = active_trade["sl"]
+                tp = active_trade["tp"]
+                bars_held = i - active_trade["entry_bar"]
+                pos_size = active_trade["size"]
+
+                trade_closed = False
+                exit_price = 0.0
+                exit_reason = ""
+
+                if entry_dir == "BUY":
+                    # Check barriers:
+                    hit_sl = c_low <= sl
+                    hit_tp = c_high >= tp
+
+                    if hit_sl and hit_tp:
+                        # Conservative rule: stop loss triggered
+                        exit_price = sl - self.slippage_usd
+                        exit_reason = "STOP_LOSS"
+                        trade_closed = True
+                    elif hit_sl:
+                        exit_price = sl - self.slippage_usd
+                        exit_reason = "STOP_LOSS"
+                        trade_closed = True
+                    elif hit_tp:
+                        exit_price = tp - self.slippage_usd
+                        exit_reason = "TAKE_PROFIT"
+                        trade_closed = True
+                    elif bars_held >= self.max_holding_bars:
+                        exit_price = c_close - self.spread_usd
+                        exit_reason = "TIME_LIMIT"
+                        trade_closed = True
+
+                    if trade_closed:
+                        pnl = (exit_price - entry_p) * pos_size
+                        r_mult = (exit_price - entry_p) / (entry_p - sl) if entry_p != sl else 0.0
+
+                else:  # "SELL"
+                    hit_sl = c_high >= sl
+                    hit_tp = c_low <= tp
+
+                    if hit_sl and hit_tp:
+                        exit_price = sl + self.slippage_usd
+                        exit_reason = "STOP_LOSS"
+                        trade_closed = True
+                    elif hit_sl:
+                        exit_price = sl + self.slippage_usd
+                        exit_reason = "STOP_LOSS"
+                        trade_closed = True
+                    elif hit_tp:
+                        exit_price = tp + self.slippage_usd
+                        exit_reason = "TAKE_PROFIT"
+                        trade_closed = True
+                    elif bars_held >= self.max_holding_bars:
+                        exit_price = c_close + self.spread_usd
+                        exit_reason = "TIME_LIMIT"
+                        trade_closed = True
+
+                    if trade_closed:
+                        pnl = (entry_p - exit_price) * pos_size
+                        r_mult = (entry_p - exit_price) / (sl - entry_p) if sl != entry_p else 0.0
+
+                if trade_closed:
+                    balance += pnl
+                    trades.append(TradeRecord(
+                        entry_time=active_trade["entry_time"],
+                        exit_time=c_ts,
+                        direction=entry_dir,
+                        entry_price=round(entry_p, 3),
+                        exit_price=round(exit_price, 3),
+                        stop_loss=round(sl, 3),
+                        take_profit=round(tp, 3),
+                        position_size_oz=round(pos_size, 3),
+                        pnl_usd=round(pnl, 2),
+                        pnl_pct=round((pnl / balance) * 100.0, 4),
+                        r_multiple=round(r_mult, 2),
+                        exit_reason=exit_reason,
+                    ))
+                    active_trade = None
+
+            equity_curve.append(balance)
+
+            # 2. Check signal for new entry (if not already in a position)
+            if active_trade is None and i < n - 1:
+                sig = signals[i]
+                if sig in ["BUY", "SELL"]:
+                    risk_amount = balance * self.risk_pct_per_trade
+
+                    if sig == "BUY":
+                        entry_p = c_close + self.spread_usd + self.slippage_usd
+                        sl = sl_levels[i] if sl_levels else entry_p - (1.5 * c_atr)
+                        tp = tp_levels[i] if tp_levels else entry_p + (3.0 * c_atr)
+                        risk_per_oz = entry_p - sl
+                    else:  # "SELL"
+                        entry_p = c_close - self.slippage_usd
+                        sl = sl_levels[i] if sl_levels else entry_p + (1.5 * c_atr)
+                        tp = tp_levels[i] if tp_levels else entry_p - (3.0 * c_atr)
+                        risk_per_oz = sl - entry_p
+
+                    if risk_per_oz > 0:
+                        size_oz = risk_amount / risk_per_oz
+                        active_trade = {
+                            "direction": sig,
+                            "entry_price": entry_p,
+                            "sl": sl,
+                            "tp": tp,
+                            "size": size_oz,
+                            "entry_time": c_ts,
+                            "entry_bar": i,
+                        }
+
+        # Calculate performance statistics
+        total_trades = len(trades)
+        wins = [t for t in trades if t.pnl_usd > 0]
+        losses = [t for t in trades if t.pnl_usd < 0]
+
+        winning_count = len(wins)
+        losing_count = len(losses)
+        win_rate = (winning_count / total_trades * 100.0) if total_trades > 0 else 0.0
+
+        gross_profit = sum(t.pnl_usd for t in wins)
+        gross_loss = abs(sum(t.pnl_usd for t in losses))
+        profit_factor = (gross_profit / gross_loss) if gross_loss > 0 else float("inf") if gross_profit > 0 else 0.0
+
+        net_profit = balance - self.initial_balance
+        return_pct = (net_profit / self.initial_balance) * 100.0
+
+        # Drawdown calculation
+        eq = np.array(equity_curve)
+        peak = np.maximum.accumulate(eq)
+        dd = peak - eq
+        dd_pct = (dd / peak) * 100.0
+        max_dd_usd = float(np.max(dd))
+        max_dd_pct = float(np.max(dd_pct))
+
+        # Sharpe calculation (assuming ~72000 M5 bars per trading year)
+        if total_trades > 1:
+            trade_returns = [t.pnl_pct for t in trades]
+            std_ret = np.std(trade_returns)
+            sharpe = (np.mean(trade_returns) / std_ret * np.sqrt(252 * 40)) if std_ret > 0 else 0.0
+        else:
+            sharpe = 0.0
+
+        avg_pnl = net_profit / total_trades if total_trades > 0 else 0.0
+        avg_r = (sum(t.r_multiple for t in trades) / total_trades) if total_trades > 0 else 0.0
+
+        return BacktestResult(
+            initial_balance=self.initial_balance,
+            final_balance=round(balance, 2),
+            total_net_profit=round(net_profit, 2),
+            return_pct=round(return_pct, 2),
+            total_trades=total_trades,
+            winning_trades=winning_count,
+            losing_trades=losing_count,
+            win_rate_pct=round(win_rate, 2),
+            profit_factor=round(profit_factor, 3),
+            max_drawdown_usd=round(max_dd_usd, 2),
+            max_drawdown_pct=round(max_dd_pct, 2),
+            sharpe_ratio=round(float(sharpe), 3),
+            avg_trade_usd=round(avg_pnl, 2),
+            avg_r_multiple=round(avg_r, 2),
+            equity_curve=[round(float(v), 2) for v in equity_curve],
+            trades=trades,
+        )
