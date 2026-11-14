@@ -238,13 +238,23 @@ export default function TradingViewChart({
     candleSeriesRef.current.setMarkers(markers);
   }, [candles, showEMAs, showSMC, showAILevels, features, prediction]);
 
+  const lastCandleDate =
+    candles.length > 0
+      ? new Date(candles[candles.length - 1].timestamp * 1000).toISOString().slice(0, 16).replace('T', ' ') + ' UTC'
+      : '';
+
   return (
     <div className="flex flex-col h-full bg-dark-900 border border-dark-700 rounded-lg overflow-hidden">
       {/* Chart Toolbar */}
       <div className="flex items-center justify-between px-4 py-2 border-b border-dark-700 bg-dark-850">
         <div className="flex items-center space-x-2">
           <span className="font-bold text-gold-400 text-sm tracking-wide">XAUUSD</span>
-          <span className="text-xs text-gray-400">Gold / US Dollar</span>
+          <span className="text-xs text-gray-400">Gold / USD</span>
+          {lastCandleDate && (
+            <span className="text-[10px] bg-dark-800 text-gold-400 px-2 py-0.5 rounded border border-dark-700 font-mono">
+              Last Bar: {lastCandleDate}
+            </span>
+          )}
           <div className="h-4 w-px bg-dark-700 mx-1" />
 
           {/* Timeframe Buttons */}

@@ -20,6 +20,16 @@ from src.data.storage import ParquetStorage
 router = APIRouter(prefix="/api/market", tags=["Market Data"])
 
 
+@router.get("/status")
+def get_market_status(
+    instrument: str = Query(DEFAULT_INSTRUMENT, description="Trading instrument e.g. XAUUSD"),
+) -> Dict[str, Any]:
+    """Retrieve official global market session status (Open/Closed), UTC schedule, and data origin."""
+    from src.live.feed import LiveMarketFeed
+    feed = LiveMarketFeed()
+    return feed.get_market_status(instrument)
+
+
 @router.get("/candles", response_model=CandlesResponse)
 def get_candles(
     instrument: str = Query(DEFAULT_INSTRUMENT, description="Trading instrument e.g. XAUUSD"),

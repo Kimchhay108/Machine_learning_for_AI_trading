@@ -5,9 +5,11 @@ import {
   Candle,
   MarketFeaturesResponse,
   PredictionResponse,
+  MarketStatus,
   fetchCandles,
   fetchMarketFeatures,
   fetchAIPrediction,
+  fetchMarketStatus,
 } from '../lib/api';
 import TradingViewChart from '../components/TradingViewChart';
 import AIAnalysisCard from '../components/AIAnalysisCard';
@@ -48,20 +50,23 @@ export default function DashboardPage() {
   const [candles, setCandles] = useState<Candle[]>([]);
   const [features, setFeatures] = useState<MarketFeaturesResponse | null>(null);
   const [prediction, setPrediction] = useState<PredictionResponse | null>(null);
+  const [marketStatus, setMarketStatus] = useState<MarketStatus | null>(null);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
 
   const loadData = async (tf: string = timeframe) => {
     setRefreshing(true);
     try {
-      const [cRes, fRes, pRes] = await Promise.all([
+      const [cRes, fRes, pRes, mRes] = await Promise.all([
         fetchCandles('XAUUSD', tf, 500),
         fetchMarketFeatures('XAUUSD', 100),
         fetchAIPrediction('XAUUSD', tf),
+        fetchMarketStatus('XAUUSD').catch(() => null),
       ]);
       setCandles(cRes.candles);
       setFeatures(fRes);
       setPrediction(pRes);
+      if (mRes) setMarketStatus(mRes);
     } catch (err) {
       console.error('Error loading dashboard data:', err);
     } finally {
@@ -104,11 +109,41 @@ export default function DashboardPage() {
           {/* Current Live Ticker */}
           <div className="hidden sm:flex items-center space-x-4">
             <div>
-              <span className="text-[10px] text-gray-400 block uppercase font-medium">Spot Gold</span>
+              <span className="text-[10px] text-gray-400 block uppercase font-medium">
+                {marketStatus?.is_market_open ? 'Live Spot Gold' : 'Latest Stored Bar'}
+              </span>
               <span className="text-base font-bold text-white font-mono">
                 ${currentPrice.toFixed(2)}
               </span>
+              <span className="text-[10px] text-gray-400 block font-mono">
+                {marketStatus?.latest_candle_time_utc ? `As of ${marketStatus.latest_candle_time_utc.slice(0, 10)}` : 'May 2024'}
+              </span>
             </div>
+
+            {/* Official Market Status Badge */}
+            {marketStatus && (
+              <div
+                className={`px-3 py-1.5 rounded-lg border text-xs flex items-center space-x-2 ${
+                  marketStatus.is_market_open
+                    ? 'bg-bull-500/10 border-bull-500/40 text-bull-400'
+                    : 'bg-bear-500/10 border-bear-500/40 text-bear-400'
+                }`}
+              >
+                <span
+                  className={`w-2 h-2 rounded-full ${
+                    marketStatus.is_market_open ? 'bg-bull-400 animate-pulse' : 'bg-bear-400'
+                  }`}
+                />
+                <div>
+                  <span className="font-bold tracking-wide block">
+                    {marketStatus.is_market_open ? 'MARKET OPEN' : 'MARKET CLOSED'}
+                  </span>
+                  <span className="text-[10px] text-gray-400 block">
+                    {marketStatus.is_market_open ? 'Active Session' : 'Weekend (Opens Sun 22:00 UTC)'}
+                  </span>
+                </div>
+              </div>
+            )}
 
             {features?.regime && (
               <div className="px-2.5 py-1 rounded bg-dark-800 border border-dark-700 text-xs">
@@ -173,6 +208,26 @@ export default function DashboardPage() {
 
       {/* Main Content Area */}
       <main className="flex-1 p-6 max-w-7xl w-full mx-auto">
+        {/* Market Closure / Historical Replay Notice Banner */}
+        {marketStatus && !marketStatus.is_market_open && (
+          <div className="bg-dark-900 border border-dark-700 border-l-4 border-l-gold-500 px-4 py-3 rounded-lg flex items-center justify-between text-xs text-gray-300 mb-6 shadow-sm">
+            <div className="flex items-center space-x-3">
+              <ShieldAlert className="w-5 h-5 text-gold-500 shrink-0" />
+              <div>
+                <span className="font-bold text-white block">
+                  Weekend Market Notice — Global Gold OTC / Spot Market is Currently Closed
+                </span>
+                <span className="text-gray-400">
+                  Global Gold trading opens Sunday 22:00 UTC and closes Friday 21:00 UTC. The chart and models are currently operating in <strong>Historical Research & Backtest Mode</strong> displaying your verified May 2024 dataset ({candles.length.toLocaleString()} M5 candles).
+                </span>
+              </div>
+            </div>
+            <span className="text-gray-400 font-mono text-[11px] shrink-0 ml-4 hidden lg:inline">
+              {marketStatus.status_message}
+            </span>
+          </div>
+        )}
+
         {activeTab === 'overview' && (
           <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
             <div className="lg:col-span-2 space-y-4">
