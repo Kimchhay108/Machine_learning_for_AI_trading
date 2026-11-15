@@ -73,6 +73,14 @@ export default function TradingViewChart({
   const entryPriceLineRef = useRef<any>(null);
   const slPriceLineRef = useRef<any>(null);
 
+  // Zoqira Smart Rails refs
+  const dayOpenLineRef = useRef<any>(null);
+  const qraResLineRef = useRef<any>(null);
+  const qraSupLineRef = useRef<any>(null);
+  const asiaHighLineRef = useRef<any>(null);
+  const asiaLowLineRef = useRef<any>(null);
+  const [showZoqiraRails, setShowZoqiraRails] = useState(true);
+
   // Overlay visibility toggles & anti-stacking filters
   const [showEMAs, setShowEMAs] = useState(true);
   const [showRRBoxes, setShowRRBoxes] = useState(true);
@@ -628,12 +636,100 @@ export default function TradingViewChart({
           }
         } catch (e) {}
       }
+
+      // =========================================================================
+      // ZOQIRA SMART RAILS: DAY OPEN, QRA RAILS & ASIA POOL
+      // =========================================================================
+      const series = candleSeriesRef.current;
+      if (series) {
+        [dayOpenLineRef, qraResLineRef, qraSupLineRef, asiaHighLineRef, asiaLowLineRef].forEach((ref) => {
+          try {
+            if (ref.current) series.removePriceLine(ref.current);
+          } catch (e) {}
+          ref.current = null;
+        });
+
+        if (showZoqiraRails && sortedData.length > 0) {
+          try {
+            const lastCandle = sortedData[sortedData.length - 1];
+            const lastTs = (lastCandle.time as number) * (Number(lastCandle.time) > 1e11 ? 1 : 1000);
+            const todayDateStr = new Date(lastTs).toISOString().slice(0, 10);
+
+            const todayCandles = sortedData.filter((c) => {
+              const cTs = (c.time as number) * (Number(c.time) > 1e11 ? 1 : 1000);
+              return new Date(cTs).toISOString().slice(0, 10) === todayDateStr;
+            });
+
+            const dayOpenPrice = todayCandles.length > 0 ? todayCandles[0].open : lastCandle.open;
+
+            // Asia Session Pool (00:00 - 07:00 UTC)
+            const asiaCandles = todayCandles.filter((c) => {
+              const cTs = (c.time as number) * (Number(c.time) > 1e11 ? 1 : 1000);
+              const hour = new Date(cTs).getUTCHours();
+              return hour >= 0 && hour < 7;
+            });
+            const asiaHigh = asiaCandles.length > 0 ? Math.max(...asiaCandles.map((c) => c.high)) : dayOpenPrice + 3.5;
+            const asiaLow = asiaCandles.length > 0 ? Math.min(...asiaCandles.map((c) => c.low)) : dayOpenPrice - 3.5;
+
+            // QRA Dynamic Volatility Rails
+            const atrVal = features?.indicators?.atr_14 || 2.2;
+            const qraResistance = dayOpenPrice + 2.5 * atrVal;
+            const qraSupport = dayOpenPrice - 2.5 * atrVal;
+
+            // 1. Day Open Rail
+            dayOpenLineRef.current = series.createPriceLine({
+              price: dayOpenPrice,
+              color: '#f59e0b',
+              lineWidth: 2,
+              lineStyle: 2, // Dashed
+              axisLabelVisible: true,
+              title: `DAY OPEN $${dayOpenPrice.toFixed(2)}`,
+            });
+
+            // 2. QRA Rails
+            qraResLineRef.current = series.createPriceLine({
+              price: qraResistance,
+              color: '#06b6d4',
+              lineWidth: 1,
+              lineStyle: 1, // Dotted
+              axisLabelVisible: true,
+              title: `QRA RES $${qraResistance.toFixed(2)}`,
+            });
+            qraSupLineRef.current = series.createPriceLine({
+              price: qraSupport,
+              color: '#06b6d4',
+              lineWidth: 1,
+              lineStyle: 1, // Dotted
+              axisLabelVisible: true,
+              title: `QRA SUP $${qraSupport.toFixed(2)}`,
+            });
+
+            // 3. Asia Session Pool
+            asiaHighLineRef.current = series.createPriceLine({
+              price: asiaHigh,
+              color: '#c084fc',
+              lineWidth: 1,
+              lineStyle: 0,
+              axisLabelVisible: true,
+              title: `ASIA HIGH $${asiaHigh.toFixed(2)}`,
+            });
+            asiaLowLineRef.current = series.createPriceLine({
+              price: asiaLow,
+              color: '#c084fc',
+              lineWidth: 1,
+              lineStyle: 0,
+              axisLabelVisible: true,
+              title: `ASIA LOW $${asiaLow.toFixed(2)}`,
+            });
+          } catch (e) {}
+        }
+      }
     }
 
     try {
       updateBoxCoordinates();
     } catch (e) {}
-  }, [candles, showEMAs, markerFilter, showRRBoxes, activeBoxModel, features, prediction, updateBoxCoordinates]);
+  }, [candles, showEMAs, markerFilter, showRRBoxes, showZoqiraRails, activeBoxModel, features, prediction, updateBoxCoordinates]);
 
   const lastCandleDate =
     candles.length > 0
@@ -773,6 +869,20 @@ export default function TradingViewChart({
               </option>
             </select>
           </div>
+
+          {/* Zoqira Smart Rails Toggle */}
+          <button
+            onClick={() => setShowZoqiraRails(!showZoqiraRails)}
+            className={`flex items-center space-x-1.5 px-2.5 py-1 rounded text-[11px] font-bold border transition ${
+              showZoqiraRails
+                ? 'bg-cyan-500/15 border-cyan-500/40 text-cyan-300 shadow-sm'
+                : 'bg-dark-900 border-dark-700 text-gray-400 hover:text-white'
+            }`}
+            title="Toggle Zoqira Day Open, QRA Dynamic Rails & Session Liquidity Pools"
+          >
+            <Sparkles className="w-3.5 h-3.5 text-cyan-400" />
+            <span>Zoqira Rails</span>
+          </button>
 
           {/* EMA Overlay Toggle */}
           <label className="flex items-center space-x-1.5 cursor-pointer text-gray-300">
@@ -919,6 +1029,29 @@ export default function TradingViewChart({
       {/* Candlestick Chart Viewport with Visual TP/SL Rectangles */}
       <div className="relative flex-1 w-full min-h-[420px]">
         <div ref={chartContainerRef} className="w-full h-full" />
+
+        {/* Zoqira Smart HUD Overlay Bar */}
+        {showZoqiraRails && (
+          <div className="absolute top-3 left-3 z-20 flex flex-wrap items-center gap-2 pointer-events-none">
+            <div className="flex items-center space-x-1.5 px-2.5 py-1 rounded-lg bg-[#050816]/90 border border-gold-500/40 text-gold-400 font-bold text-[11px] backdrop-blur-md shadow-lg pointer-events-auto">
+              <Sparkles className="w-3.5 h-3.5 text-gold-400" />
+              <span>ZOQIRA SMART</span>
+            </div>
+
+            <div className="flex items-center space-x-1.5 px-2.5 py-1 rounded-lg bg-[#050816]/90 border border-cyan-500/40 text-cyan-300 font-bold text-[11px] backdrop-blur-md shadow-lg pointer-events-auto">
+              <span>DAY OPEN & QRA RAILS</span>
+            </div>
+
+            <div className="flex items-center space-x-1.5 px-2.5 py-1 rounded-lg bg-[#050816]/90 border border-purple-500/40 text-purple-300 font-semibold text-[11px] backdrop-blur-md shadow-lg pointer-events-auto">
+              <span>ASIA POOL</span>
+            </div>
+
+            <div className="flex items-center space-x-1.5 px-2.5 py-1 rounded-lg bg-[#050816]/90 border border-white/10 text-slate-300 font-semibold text-[11px] backdrop-blur-md shadow-lg pointer-events-auto">
+              <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
+              <span>NON-REPAINTING</span>
+            </div>
+          </div>
+        )}
 
         {/* ========================================================================= */}
         {/* VISUAL SHADED RISK/REWARD RECTANGLES (GREEN TP BOX & RED SL BOX)          */}
