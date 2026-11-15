@@ -127,14 +127,14 @@ class BacktestRequest(BaseModel):
     enable_partial_tp: bool = Field(default=False, description="Lock in 50% profit at +1.0R and trail stop-loss to breakeven (default False to let winners run)")
     partial_tp_r: float = Field(default=1.0, description="R:Multiple trigger to take 50% partial profit")
     only_killzones: bool = Field(default=True, description="Execute trades strictly during London (07:00-10:00) & NY (12:00-15:00) Killzones")
-    use_h1_gatekeeper: bool = Field(default=False, description="Enforce H1 Macro Trend alignment: Price > H1 200 EMA for BUY, Price < H1 200 EMA for SELL (default False)")
+    use_h1_gatekeeper: bool = Field(default=True, description="Enforce H1 Macro Trend alignment: Price > H1 200 EMA for BUY, Price < H1 200 EMA for SELL (default True)")
     learn_from_mistakes: bool = Field(default=True, description="AI Failure Memory: Vetoes setups matching historical loss fingerprints (low momentum chop, climax exhaustion, volatility spikes)")
     filter_high_impact_news: bool = Field(default=True, description="News Blackout: Abstain from trading ±30m around high-impact USD events (NFP, CPI, FOMC, GDP, etc.)")
     news_blackout_mins: int = Field(default=30, description="Minutes before and after high-impact news release to block trade entries")
     exclude_asian_session: bool = Field(default=True, description="Strict Asian Session Blackout: Do NOT trade between 21:00 and 07:00 UTC")
     use_full_history: bool = Field(default=True, description="Backtest the full multi-year 2023-present dataset (all 274k+ bars) instead of only the 30% out-of-sample slice")
     strict_structural_entry: bool = Field(default=True, description="Strict Structural Pattern Confluence (Model B: ICT FVG; Model A: EMA+RSI; Model D: Pin/Engulfing; Model F: Value Area/POC; Model G: Delta Divergence/Absorption). Uncheck for pure raw ML probability entries")
-    target_rr: Optional[float] = Field(default=None, description="Optional target Risk:Reward ratio (e.g. 1.2, 1.5, 2.0)")
+    target_rr: Optional[float] = Field(default=1.5, description="Optional target Risk:Reward ratio (default 1.5 for optimal gold volatility capture)")
     post_loss_cooldown_bars: int = Field(default=3, ge=0, le=20, description="Mistake learning quarantine: bars to wait after a stop-loss before re-entering")
 
 

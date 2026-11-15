@@ -121,17 +121,22 @@ class TestAPIEndpoints:
         assert res2.status_code == 401
 
     def test_admin_retrain_authorized(self, client: TestClient):
-        # Call with valid admin key -> 200
-        res = client.post(
-            "/api/ai/train",
-            json={"version": "v1.0.1", "threshold": 0.52, "test_ratio": 0.25},
-            headers={"X-Admin-Key": settings.API_ADMIN_KEY},
-        )
-        assert res.status_code == 200
-        data = res.json()
-        assert data["status"] == "SUCCESS"
-        assert data["version"] == "v1.0.1"
-        assert data["train_samples"] > 0
+        from src.api.dependencies import get_active_version, set_active_version
+        orig_active = get_active_version()
+        try:
+            # Call with valid admin key -> 200
+            res = client.post(
+                "/api/ai/train",
+                json={"version": "v1.0.1", "threshold": 0.52, "test_ratio": 0.25},
+                headers={"X-Admin-Key": settings.API_ADMIN_KEY},
+            )
+            assert res.status_code == 200
+            data = res.json()
+            assert data["status"] == "SUCCESS"
+            assert data["version"] == "v1.0.1"
+            assert data["train_samples"] > 0
+        finally:
+            set_active_version(orig_active)
 
     def test_evaluate_predictions(self, client: TestClient):
         res = client.post(
@@ -147,44 +152,56 @@ class TestAPIEndpoints:
         assert "mean_adverse_excursion_pips" in data
 
     def test_backtest_run_and_get(self, client: TestClient):
-        req = {
-            "version": "v1.0.0",
-            "initial_capital": 10000.0,
-            "spread": 0.20,
-            "slippage": 0.05,
-            "risk_per_trade": 0.01,
-            "threshold": 0.45,
-            "max_holding_bars": 24,
-        }
-        res = client.post("/api/backtest/run", json=req)
-        assert res.status_code == 200
-        data = res.json()
-        assert data["initial_balance"] == 10000.0
-        assert data["total_trades"] > 0
-        assert len(data["equity_curve"]) > 0
-        assert len(data["trades"]) == data["total_trades"]
-
-        # Validate cached results retrieval
-        res_cache = client.get("/api/backtest/results")
-        assert res_cache.status_code == 200
-        data_cache = res_cache.json()
-        assert data_cache["total_trades"] == data["total_trades"]
-
-    def test_backtest_model_types(self, client: TestClient):
-        """Verify backtest runs with specific sub-models."""
-        for m_type in ["smc_ict", "technical", "price_action"]:
+        cached_file = settings.BACKTEST_DIR / "latest_backtest.joblib"
+        backup_bytes = cached_file.read_bytes() if cached_file.exists() else None
+        try:
             req = {
                 "version": "v1.0.0",
-                "model_type": m_type,
                 "initial_capital": 10000.0,
-                "threshold": 0.50,
+                "spread": 0.20,
+                "slippage": 0.05,
+                "risk_per_trade": 0.01,
+                "threshold": 0.45,
+                "max_holding_bars": 24,
             }
             res = client.post("/api/backtest/run", json=req)
             assert res.status_code == 200
             data = res.json()
             assert data["initial_balance"] == 10000.0
-            assert "total_trades" in data
+            assert data["total_trades"] > 0
             assert len(data["equity_curve"]) > 0
+            assert len(data["trades"]) == data["total_trades"]
+
+            # Validate cached results retrieval
+            res_cache = client.get("/api/backtest/results")
+            assert res_cache.status_code == 200
+            data_cache = res_cache.json()
+            assert data_cache["total_trades"] == data["total_trades"]
+        finally:
+            if backup_bytes is not None:
+                cached_file.write_bytes(backup_bytes)
+
+    def test_backtest_model_types(self, client: TestClient):
+        """Verify backtest runs with specific sub-models."""
+        cached_file = settings.BACKTEST_DIR / "latest_backtest.joblib"
+        backup_bytes = cached_file.read_bytes() if cached_file.exists() else None
+        try:
+            for m_type in ["smc_ict", "technical", "price_action"]:
+                req = {
+                    "version": "v1.0.0",
+                    "model_type": m_type,
+                    "initial_capital": 10000.0,
+                    "threshold": 0.50,
+                }
+                res = client.post("/api/backtest/run", json=req)
+                assert res.status_code == 200
+                data = res.json()
+                assert data["initial_balance"] == 10000.0
+                assert "total_trades" in data
+                assert len(data["equity_curve"]) > 0
+        finally:
+            if backup_bytes is not None:
+                cached_file.write_bytes(backup_bytes)
 
     def test_backtest_compare(self, client: TestClient):
         """Verify comparative backtesting endpoint runs all models side-by-side."""
