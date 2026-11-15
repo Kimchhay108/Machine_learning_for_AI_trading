@@ -187,17 +187,19 @@ class TestAPIEndpoints:
             assert len(data["equity_curve"]) > 0
 
     def test_backtest_compare(self, client: TestClient):
-        """Verify comparative backtesting endpoint runs all 4 models side-by-side."""
+        """Verify comparative backtesting endpoint runs all models side-by-side."""
         res = client.post("/api/backtest/compare", json={"version": "v1.0.0", "threshold": 0.50})
         assert res.status_code == 200
         data = res.json()
         assert "results" in data
-        assert len(data["results"]) == 4
+        assert len(data["results"]) == 6
         keys = [item["model_key"] for item in data["results"]]
         assert "ensemble" in keys
         assert "smc_ict" in keys
         assert "technical" in keys
         assert "price_action" in keys
+        assert "volume_profile" in keys
+        assert "footprint" in keys
         assert "best_model_by_profit" in data
         assert "best_model_by_winrate" in data
         for item in data["results"]:

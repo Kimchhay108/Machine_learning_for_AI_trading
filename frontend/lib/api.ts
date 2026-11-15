@@ -109,6 +109,8 @@ export interface PredictionResponse {
       tech_prediction?: number;
       smc_prediction?: number;
       price_action_prediction?: number;
+      volume_profile_prediction?: number;
+      footprint_prediction?: number;
     };
   };
 }
@@ -375,6 +377,7 @@ export async function runBacktest(params: {
   news_blackout_mins?: number;
   exclude_asian_session?: boolean;
   use_full_history?: boolean;
+  strict_structural_entry?: boolean;
   target_rr?: number;
 }): Promise<BacktestResponse> {
   const res = await fetch(`${API_BASE}/api/backtest/run`, {
@@ -406,6 +409,7 @@ export async function runBacktestComparison(params?: {
   news_blackout_mins?: number;
   exclude_asian_session?: boolean;
   use_full_history?: boolean;
+  strict_structural_entry?: boolean;
   target_rr?: number;
 }): Promise<BacktestComparisonResponse> {
   const res = await fetch(`${API_BASE}/api/backtest/compare`, {

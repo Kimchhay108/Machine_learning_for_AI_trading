@@ -45,6 +45,7 @@ def generate_strategy_signals_and_levels(
     filter_high_impact_news: bool = True,
     news_blackout_mins: int = 30,
     exclude_asian_session: bool = True,
+    strict_structural_entry: bool = True,
 ) -> Tuple[List[str], List[float], List[float], str, str]:
     """Generate model-tailored signals, Entry, Stop-Loss, and Take-Profit price levels.
 
@@ -165,9 +166,11 @@ def generate_strategy_signals_and_levels(
             pb, pl = prob_b[i, 0], prob_b[i, 2]
             cp, ca = close[i], atr[i]
 
-            # Model B Strict Entry Condition: Must have active ICT Pattern + Model B confidence >= threshold
-            is_buy = in_killzones[i] and (not news_blackout[i]) and h1_bull[i] and mistake_ok_buy[i] and ict_bull[i] and (pl >= threshold and pl > pb)
-            is_sell = in_killzones[i] and (not news_blackout[i]) and h1_bear[i] and mistake_ok_sell[i] and ict_bear[i] and (pb >= threshold and pb > pl)
+            # Model B Structural Entry Condition (toggleable)
+            cond_buy = ict_bull[i] if strict_structural_entry else True
+            cond_sell = ict_bear[i] if strict_structural_entry else True
+            is_buy = in_killzones[i] and (not news_blackout[i]) and h1_bull[i] and mistake_ok_buy[i] and cond_buy and (pl >= threshold and pl > pb)
+            is_sell = in_killzones[i] and (not news_blackout[i]) and h1_bear[i] and mistake_ok_sell[i] and cond_sell and (pb >= threshold and pb > pl)
 
             if is_buy and not is_sell:
                 signals.append("BUY")
@@ -212,12 +215,14 @@ def generate_strategy_signals_and_levels(
             pb, pl = prob_a[i, 0], prob_a[i, 2]
             cp, ca = close[i], atr[i]
 
-            # Model A Strict Entry Condition: Bullish EMA trend + healthy pullback confirmation
+            # Model A Structural Entry Condition (toggleable)
             tech_bull = (ema_align[i] >= 1) and (rsi_os[i] == 1 or (rsi_arr[i] >= 35.0 and rsi_arr[i] <= 62.0))
             tech_bear = (ema_align[i] <= -1) and (rsi_ob[i] == 1 or (rsi_arr[i] >= 38.0 and rsi_arr[i] <= 65.0))
+            cond_buy = tech_bull if strict_structural_entry else True
+            cond_sell = tech_bear if strict_structural_entry else True
 
-            is_buy = in_killzones[i] and (not news_blackout[i]) and h1_bull[i] and mistake_ok_buy[i] and tech_bull and (pl >= threshold and pl > pb)
-            is_sell = in_killzones[i] and (not news_blackout[i]) and h1_bear[i] and mistake_ok_sell[i] and tech_bear and (pb >= threshold and pb > pl)
+            is_buy = in_killzones[i] and (not news_blackout[i]) and h1_bull[i] and mistake_ok_buy[i] and cond_buy and (pl >= threshold and pl > pb)
+            is_sell = in_killzones[i] and (not news_blackout[i]) and h1_bear[i] and mistake_ok_sell[i] and cond_sell and (pb >= threshold and pb > pl)
 
             if is_buy and not is_sell:
                 signals.append("BUY")
@@ -254,12 +259,118 @@ def generate_strategy_signals_and_levels(
             pb, pl = prob_d[i, 0], prob_d[i, 2]
             cp, ca, ch, cl = close[i], atr[i], high[i], low[i]
 
-            # Model D Strict Entry Condition: Candlestick Rejection Pin Bar or Engulfing wick pattern
+            # Model D Structural Entry Condition (toggleable)
             pa_bull = (pin_bull[i] == 1) or (engulf_bull[i] == 1) or (lower_wick[i] >= 0.35)
             pa_bear = (pin_bear[i] == 1) or (engulf_bear[i] == 1) or (upper_wick[i] >= 0.35)
+            cond_buy = pa_bull if strict_structural_entry else True
+            cond_sell = pa_bear if strict_structural_entry else True
 
-            is_buy = in_killzones[i] and (not news_blackout[i]) and h1_bull[i] and mistake_ok_buy[i] and pa_bull and (pl >= threshold and pl > pb)
-            is_sell = in_killzones[i] and (not news_blackout[i]) and h1_bear[i] and mistake_ok_sell[i] and pa_bear and (pb >= threshold and pb > pl)
+            is_buy = in_killzones[i] and (not news_blackout[i]) and h1_bull[i] and mistake_ok_buy[i] and cond_buy and (pl >= threshold and pl > pb)
+            is_sell = in_killzones[i] and (not news_blackout[i]) and h1_bear[i] and mistake_ok_sell[i] and cond_sell and (pb >= threshold and pb > pl)
+
+            if is_buy and not is_sell:
+                signals.append("BUY")
+                ep = cp + spread + slippage
+                if 0.40 <= (ep - cl) <= 3.0 * ca:
+                    sl = cl - 0.50
+                else:
+                    sl = ep - (1.2 * ca)
+                risk = max(ep - sl, 0.40)
+                tp = ep + (eff_rr * risk)
+            elif is_sell and not is_buy:
+                signals.append("SELL")
+                ep = cp - slippage
+                if 0.40 <= (ch - ep) <= 3.0 * ca:
+                    sl = ch + 0.50
+                else:
+                    sl = ep + (1.2 * ca)
+                risk = max(sl - ep, 0.40)
+                tp = ep - (eff_rr * risk)
+            else:
+                signals.append("WAIT")
+                sl = cp - (1.2 * ca)
+                tp = cp + (eff_rr * 1.2 * ca)
+
+            sl_levels.append(sl)
+            tp_levels.append(tp)
+
+    elif m_type == "volume_profile":
+        eff_rr = target_rr if target_rr and target_rr > 0 else 2.5
+        model_name = "Model F: Volume Profile (Auction Theory)"
+        sl_tp_logic = f"Auction Market POC/VAH/VAL Rotations | SL: Outside Value Area (-$0.50 buffer), TP: {eff_rr} R:R Target"
+
+        prob_f = engine.ensemble.model_f.predict_proba(test_df)
+        vp_poc = test_df.get("vp_poc", pd.Series(close, index=test_df.index)).to_numpy()
+        vp_val = test_df.get("vp_val", pd.Series(close - atr, index=test_df.index)).to_numpy()
+        vp_vah = test_df.get("vp_vah", pd.Series(close + atr, index=test_df.index)).to_numpy()
+        hvn_b = test_df.get("vp_hvn_bounce", pd.Series(0, index=test_df.index)).to_numpy()
+        lvn_bo = test_df.get("vp_lvn_breakout", pd.Series(0, index=test_df.index)).to_numpy()
+
+        for i in range(n):
+            pb, pl = prob_f[i, 0], prob_f[i, 2]
+            cp, ca = close[i], atr[i]
+            val_i, vah_i = vp_val[i], vp_vah[i]
+
+            # Structural Volume Profile: testing VAL/POC or LVN breakout up
+            vp_bull = (low[i] <= val_i + 0.5 * ca) or (hvn_b[i] == 1 and cp > val_i) or (lvn_bo[i] == 1 and cp > vah_i)
+            vp_bear = (high[i] >= vah_i - 0.5 * ca) or (hvn_b[i] == 1 and cp < vah_i) or (lvn_bo[i] == 1 and cp < val_i)
+
+            cond_buy = vp_bull if strict_structural_entry else True
+            cond_sell = vp_bear if strict_structural_entry else True
+
+            is_buy = in_killzones[i] and (not news_blackout[i]) and h1_bull[i] and mistake_ok_buy[i] and cond_buy and (pl >= threshold and pl > pb)
+            is_sell = in_killzones[i] and (not news_blackout[i]) and h1_bear[i] and mistake_ok_sell[i] and cond_sell and (pb >= threshold and pb > pl)
+
+            if is_buy and not is_sell:
+                signals.append("BUY")
+                ep = cp + spread + slippage
+                if 0.50 <= (ep - val_i) <= 4.0 * ca:
+                    sl = val_i - 0.50
+                else:
+                    sl = ep - (1.5 * ca)
+                risk = max(ep - sl, 0.50)
+                tp = ep + (eff_rr * risk)
+            elif is_sell and not is_buy:
+                signals.append("SELL")
+                ep = cp - slippage
+                if 0.50 <= (vah_i - ep) <= 4.0 * ca:
+                    sl = vah_i + 0.50
+                else:
+                    sl = ep + (1.5 * ca)
+                risk = max(sl - ep, 0.50)
+                tp = ep - (eff_rr * risk)
+            else:
+                signals.append("WAIT")
+                sl = cp - (1.5 * ca)
+                tp = cp + (eff_rr * 1.5 * ca)
+
+            sl_levels.append(sl)
+            tp_levels.append(tp)
+
+    elif m_type == "footprint":
+        eff_rr = target_rr if target_rr and target_rr > 0 else 2.0
+        model_name = "Model G: Footprint & Order Flow (Delta Absorption)"
+        sl_tp_logic = f"Order Flow Delta Divergence & Absorption | SL: Wick Absorption Extreme (-$0.50 buffer), TP: {eff_rr} R:R Target"
+
+        prob_g = engine.ensemble.model_g.predict_proba(test_df)
+        cvd_bull = test_df.get("cvd_divergence_bull", pd.Series(0, index=test_df.index)).to_numpy()
+        cvd_bear = test_df.get("cvd_divergence_bear", pd.Series(0, index=test_df.index)).to_numpy()
+        trap_s = test_df.get("trapped_sellers", pd.Series(0, index=test_df.index)).to_numpy()
+        trap_b = test_df.get("trapped_buyers", pd.Series(0, index=test_df.index)).to_numpy()
+        delta_p = test_df.get("delta_proxy", pd.Series(0.0, index=test_df.index)).to_numpy()
+
+        for i in range(n):
+            pb, pl = prob_g[i, 0], prob_g[i, 2]
+            cp, ca, ch, cl = close[i], atr[i], high[i], low[i]
+
+            fp_bull = (cvd_bull[i] == 1) or (trap_s[i] == 1) or (delta_p[i] > 0)
+            fp_bear = (cvd_bear[i] == 1) or (trap_b[i] == 1) or (delta_p[i] < 0)
+
+            cond_buy = fp_bull if strict_structural_entry else True
+            cond_sell = fp_bear if strict_structural_entry else True
+
+            is_buy = in_killzones[i] and (not news_blackout[i]) and h1_bull[i] and mistake_ok_buy[i] and cond_buy and (pl >= threshold and pl > pb)
+            is_sell = in_killzones[i] and (not news_blackout[i]) and h1_bear[i] and mistake_ok_sell[i] and cond_sell and (pb >= threshold and pb > pl)
 
             if is_buy and not is_sell:
                 signals.append("BUY")
@@ -299,17 +410,22 @@ def generate_strategy_signals_and_levels(
         pred_a = engine.ensemble.model_a.predict(test_df)
         pred_b = engine.ensemble.model_b.predict(test_df)
         pred_d = engine.ensemble.model_d.predict(test_df)
+        pred_f = engine.ensemble.model_f.predict(test_df)
+        pred_g = engine.ensemble.model_g.predict(test_df)
 
-        agreed_bull = ((pred_a == 2).astype(int) + (pred_b == 2).astype(int) + (pred_d == 2).astype(int)) >= 2
-        agreed_bear = ((pred_a == 0).astype(int) + (pred_b == 0).astype(int) + (pred_d == 0).astype(int)) >= 2
+        agreed_bull = ((pred_a == 2).astype(int) + (pred_b == 2).astype(int) + (pred_d == 2).astype(int) + (pred_f == 2).astype(int) + (pred_g == 2).astype(int)) >= 2
+        agreed_bear = ((pred_a == 0).astype(int) + (pred_b == 0).astype(int) + (pred_d == 0).astype(int) + (pred_f == 0).astype(int) + (pred_g == 0).astype(int)) >= 2
 
         for i in range(n):
             cp, ca = close[i], atr[i]
             sig = decisions[i]
 
-            # Model E Strict Entry Condition: Calibrated Ensemble threshold + multi-model majority consensus
-            is_buy = in_killzones[i] and (not news_blackout[i]) and h1_bull[i] and mistake_ok_buy[i] and (sig == "BUY") and agreed_bull[i]
-            is_sell = in_killzones[i] and (not news_blackout[i]) and h1_bear[i] and mistake_ok_sell[i] and (sig == "SELL") and agreed_bear[i]
+            cond_buy = agreed_bull[i] if strict_structural_entry else True
+            cond_sell = agreed_bear[i] if strict_structural_entry else True
+
+            # Model E Entry Condition: Calibrated Ensemble threshold + multi-model majority consensus (toggleable)
+            is_buy = in_killzones[i] and (not news_blackout[i]) and h1_bull[i] and mistake_ok_buy[i] and (sig == "BUY") and cond_buy
+            is_sell = in_killzones[i] and (not news_blackout[i]) and h1_bear[i] and mistake_ok_sell[i] and (sig == "SELL") and cond_sell
 
             if is_buy and not is_sell:
                 signals.append("BUY")
@@ -446,6 +562,7 @@ def run_backtest(req: BacktestRequest) -> BacktestResponse:
         filter_high_impact_news=getattr(req, "filter_high_impact_news", True),
         news_blackout_mins=getattr(req, "news_blackout_mins", 30),
         exclude_asian_session=getattr(req, "exclude_asian_session", True),
+        strict_structural_entry=getattr(req, "strict_structural_entry", True),
     )
 
     backtester = RealisticBacktestEngine(
@@ -506,12 +623,14 @@ def _execute_comparison(req: BacktestRequest) -> BacktestComparisonResponse:
         test_start = int(n * 0.70) + 12
         test_df = df_feats.iloc[test_start:].reset_index(drop=True)
 
-    model_keys = ["ensemble", "smc_ict", "technical", "price_action"]
+    model_keys = ["ensemble", "smc_ict", "technical", "price_action", "volume_profile", "footprint"]
     optimal_tfs = {
-        "ensemble": "M5 Entry (H1/M15 Bias)",
-        "smc_ict": "M5 Entry (H1 Liquidity)",
-        "technical": "M15 Entry (H1 Trend)",
-        "price_action": "M15 Entry (Key Levels)",
+        "ensemble": "M5 Entry (Multi-Model Consensus)",
+        "smc_ict": "M5 Entry (H1 Liquidity & FVG)",
+        "technical": "M15 Entry (EMA Trend & RSI)",
+        "price_action": "M15 Entry (Wick Rejections)",
+        "volume_profile": "M5 Entry (Session POC/VAH/VAL)",
+        "footprint": "M5 Entry (Delta Absorption)",
     }
     comparison_items: List[ModelComparisonItem] = []
 
@@ -530,6 +649,7 @@ def _execute_comparison(req: BacktestRequest) -> BacktestComparisonResponse:
             filter_high_impact_news=getattr(req, "filter_high_impact_news", True),
             news_blackout_mins=getattr(req, "news_blackout_mins", 30),
             exclude_asian_session=getattr(req, "exclude_asian_session", True),
+            strict_structural_entry=getattr(req, "strict_structural_entry", True),
         )
 
         backtester = RealisticBacktestEngine(

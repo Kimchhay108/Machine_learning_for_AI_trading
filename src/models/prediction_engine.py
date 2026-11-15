@@ -135,10 +135,14 @@ class PredictionEngine:
         sub_tech = int(self.ensemble.model_a.predict(latest_row)[0])
         sub_smc = int(self.ensemble.model_b.predict(latest_row)[0])
         sub_pa = int(self.ensemble.model_d.predict(latest_row)[0])
+        sub_vp = int(self.ensemble.model_f.predict(latest_row)[0])
+        sub_fp = int(self.ensemble.model_g.predict(latest_row)[0])
 
         tech_prob = self.ensemble.model_a.predict_proba(latest_row)[0]
         smc_prob = self.ensemble.model_b.predict_proba(latest_row)[0]
         pa_prob = self.ensemble.model_d.predict_proba(latest_row)[0]
+        vp_prob = self.ensemble.model_f.predict_proba(latest_row)[0]
+        fp_prob = self.ensemble.model_g.predict_proba(latest_row)[0]
 
         # -------------------------------------------------------------
         # Generate Next Entry, SL, TP, and 'Why' Explanations for ALL Models
@@ -355,7 +359,111 @@ class PredictionEngine:
             "key_drivers": [f"High: ${c_high:.2f}", f"Low: ${c_low:.2f}", f"ATR: ${atr:.2f}"],
         }
 
-        all_setups = [setup_ensemble, setup_smc, setup_tech, setup_pa]
+        # 5. Model F (Volume Profile - Auction Market Theory) Setup
+        vp_poc = float(latest_row.get("vp_poc", pd.Series([entry_price])).iloc[0])
+        vp_val = float(latest_row.get("vp_val", pd.Series([entry_price - 1.5 * atr])).iloc[0])
+        vp_vah = float(latest_row.get("vp_vah", pd.Series([entry_price + 1.5 * atr])).iloc[0])
+        p_f_bear, p_f_bull = float(vp_prob[0]), float(vp_prob[2])
+
+        if p_f_bull >= 0.40 and p_f_bull > p_f_bear:
+            dir_f = "BUY"
+            sl_f = round((vp_val - 0.50) if 0.50 <= (entry_price - vp_val) <= 4.0 * atr else (entry_price - 1.5 * atr), 2)
+            risk_f = max(entry_price - sl_f, 0.50)
+            tp_f = round(entry_price + 2.5 * risk_f, 2)
+            conf_f = round(p_f_bull * 100, 1)
+            why_f = (
+                f"Model F triggers BUY ({conf_f}% prob): Price testing Value Area Low (${vp_val:.2f}) / POC (${vp_poc:.2f}) with buying volume absorption. "
+                f"Auction SL set at ${sl_f} (below VAL), targeting opposing VAH at ${tp_f} (2.5 R:R)."
+            )
+        elif p_f_bear >= 0.40 and p_f_bear > p_f_bull:
+            dir_f = "SELL"
+            sl_f = round((vp_vah + 0.50) if 0.50 <= (vp_vah - entry_price) <= 4.0 * atr else (entry_price + 1.5 * atr), 2)
+            risk_f = max(sl_f - entry_price, 0.50)
+            tp_f = round(entry_price - 2.5 * risk_f, 2)
+            conf_f = round(p_f_bear * 100, 1)
+            why_f = (
+                f"Model F triggers SELL ({conf_f}% prob): Price testing Value Area High (${vp_vah:.2f}) / POC (${vp_poc:.2f}) with distribution rejection. "
+                f"Auction SL set at ${sl_f} (above VAH), targeting opposing VAL at ${tp_f} (2.5 R:R)."
+            )
+        else:
+            dir_f = "WAIT"
+            sl_f = round(entry_price - 1.5 * atr, 2)
+            tp_f = round(entry_price + 3.75 * atr, 2)
+            conf_f = round(max(p_f_bull, p_f_bear) * 100, 1)
+            why_f = f"Model F in WAIT: Price (${entry_price:.2f}) trading within rotation bounds. POC: ${vp_poc:.2f}, VAH: ${vp_vah:.2f}, VAL: ${vp_val:.2f}."
+
+        setup_vp = {
+            "model_key": "volume_profile",
+            "model_name": "Model F: Volume Profile (Auction Theory)",
+            "direction": dir_f,
+            "entry_price": round(entry_price, 2),
+            "stop_loss": sl_f,
+            "take_profit": tp_f,
+            "risk_reward_ratio": 2.5,
+            "risk_distance_usd": round(abs(entry_price - sl_f), 2),
+            "confidence_pct": conf_f,
+            "why_explanation": why_f,
+            "key_drivers": [f"POC: ${vp_poc:.2f}", f"VAH: ${vp_vah:.2f}", f"VAL: ${vp_val:.2f}"],
+        }
+
+        # 6. Model G (Footprint & Order Flow Delta) Setup
+        delta_val = float(latest_row.get("delta_proxy", pd.Series([0.0])).iloc[0])
+        has_cvd_bull = bool(latest_row.get("cvd_divergence_bull", pd.Series([0])).iloc[0])
+        has_cvd_bear = bool(latest_row.get("cvd_divergence_bear", pd.Series([0])).iloc[0])
+        has_trap_s = bool(latest_row.get("trapped_sellers", pd.Series([0])).iloc[0])
+        has_trap_b = bool(latest_row.get("trapped_buyers", pd.Series([0])).iloc[0])
+        p_g_bear, p_g_bull = float(fp_prob[0]), float(fp_prob[2])
+
+        if p_g_bull >= 0.40 and p_g_bull > p_g_bear:
+            dir_g = "BUY"
+            sl_g = round((c_low - 0.50) if 0.40 <= (entry_price - c_low) <= 3.0 * atr else (entry_price - 1.2 * atr), 2)
+            risk_g = max(entry_price - sl_g, 0.40)
+            tp_g = round(entry_price + 2.0 * risk_g, 2)
+            conf_g = round(p_g_bull * 100, 1)
+            drivers_g = []
+            if has_cvd_bull: drivers_g.append("Bullish CVD Divergence")
+            if has_trap_s: drivers_g.append("Trapped Sellers at Low")
+            if not drivers_g: drivers_g.append(f"Positive Delta ({delta_val:+.1f})")
+            why_g = (
+                f"Model G triggers BUY ({conf_g}% prob): Institutional footprint signals aggressive absorption ({', '.join(drivers_g)}). "
+                f"Order Flow SL at ${sl_g} (under absorbed low ${c_low:.2f}), TP at ${tp_g} (2.0 R:R)."
+            )
+        elif p_g_bear >= 0.40 and p_g_bear > p_g_bull:
+            dir_g = "SELL"
+            sl_g = round((c_high + 0.50) if 0.40 <= (c_high - entry_price) <= 3.0 * atr else (entry_price + 1.2 * atr), 2)
+            risk_g = max(sl_g - entry_price, 0.40)
+            tp_g = round(entry_price - 2.0 * risk_g, 2)
+            conf_g = round(p_g_bear * 100, 1)
+            drivers_g = []
+            if has_cvd_bear: drivers_g.append("Bearish CVD Divergence")
+            if has_trap_b: drivers_g.append("Trapped Buyers at High")
+            if not drivers_g: drivers_g.append(f"Negative Delta ({delta_val:+.1f})")
+            why_g = (
+                f"Model G triggers SELL ({conf_g}% prob): Institutional footprint signals aggressive distribution ({', '.join(drivers_g)}). "
+                f"Order Flow SL at ${sl_g} (above trapped high ${c_high:.2f}), TP at ${tp_g} (2.0 R:R)."
+            )
+        else:
+            dir_g = "WAIT"
+            sl_g = round(entry_price - 1.2 * atr, 2)
+            tp_g = round(entry_price + 2.4 * atr, 2)
+            conf_g = round(max(p_g_bull, p_g_bear) * 100, 1)
+            why_g = f"Model G in WAIT: Delta balanced ({delta_val:+.1f}). No significant trapped volume or CVD divergence detected."
+
+        setup_fp = {
+            "model_key": "footprint",
+            "model_name": "Model G: Footprint & Order Flow",
+            "direction": dir_g,
+            "entry_price": round(entry_price, 2),
+            "stop_loss": sl_g,
+            "take_profit": tp_g,
+            "risk_reward_ratio": 2.0,
+            "risk_distance_usd": round(abs(entry_price - sl_g), 2),
+            "confidence_pct": conf_g,
+            "why_explanation": why_g,
+            "key_drivers": [f"Delta: {delta_val:+.1f}", f"CVD Divergence: {'Bull' if has_cvd_bull else ('Bear' if has_cvd_bear else 'None')}"],
+        }
+
+        all_setups = [setup_ensemble, setup_smc, setup_tech, setup_pa, setup_vp, setup_fp]
 
         contributing = {
             "top_technical_drivers": top_tech,
@@ -366,6 +474,8 @@ class PredictionEngine:
                 "tech_prediction": sub_tech,
                 "smc_prediction": sub_smc,
                 "price_action_prediction": sub_pa,
+                "volume_profile_prediction": sub_vp,
+                "footprint_prediction": sub_fp,
             }
         }
 

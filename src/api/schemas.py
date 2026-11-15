@@ -114,7 +114,7 @@ class ActivateModelRequest(BaseModel):
 
 class BacktestRequest(BaseModel):
     version: str = Field(default="v1.0.0", description="Model version to use")
-    model_type: str = Field(default="ensemble", description="Strategy to backtest: 'ensemble', 'smc_ict', 'technical', 'price_action'")
+    model_type: str = Field(default="ensemble", description="Strategy to backtest: 'ensemble', 'smc_ict', 'technical', 'price_action', 'volume_profile', 'footprint'")
     timeframe: str = Field(default="M5", description="Candle timeframe to backtest: 'M5', 'M15', 'H1'")
     initial_capital: float = Field(default=10000.0, ge=100.0)
     spread: float = Field(default=0.20, ge=0.0, description="Bid-ask spread in USD")
@@ -133,6 +133,7 @@ class BacktestRequest(BaseModel):
     news_blackout_mins: int = Field(default=30, description="Minutes before and after high-impact news release to block trade entries")
     exclude_asian_session: bool = Field(default=True, description="Strict Asian Session Blackout: Do NOT trade between 21:00 and 07:00 UTC")
     use_full_history: bool = Field(default=True, description="Backtest the full multi-year 2023-present dataset (all 274k+ bars) instead of only the 30% out-of-sample slice")
+    strict_structural_entry: bool = Field(default=True, description="Strict Structural Pattern Confluence (Model B: ICT FVG; Model A: EMA+RSI; Model D: Pin/Engulfing; Model F: Value Area/POC; Model G: Delta Divergence/Absorption). Uncheck for pure raw ML probability entries")
     target_rr: Optional[float] = Field(default=None, description="Optional target Risk:Reward ratio (e.g. 1.2, 1.5, 2.0)")
 
 

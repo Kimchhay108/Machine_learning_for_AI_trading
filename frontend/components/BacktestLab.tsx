@@ -54,6 +54,7 @@ export default function BacktestLab() {
   const [filterNews, setFilterNews] = useState(true);
   const [excludeAsian, setExcludeAsian] = useState(true);
   const [useFullHistory, setUseFullHistory] = useState(true);
+  const [strictStructuralEntry, setStrictStructuralEntry] = useState(true);
   const [targetRR, setTargetRR] = useState<number | undefined>(undefined);
 
   // Chart ref
@@ -155,6 +156,7 @@ export default function BacktestLab() {
         news_blackout_mins: 30,
         exclude_asian_session: excludeAsian,
         use_full_history: useFullHistory,
+        strict_structural_entry: strictStructuralEntry,
         target_rr: targetRR,
       });
       setResults(res);
@@ -187,6 +189,7 @@ export default function BacktestLab() {
         news_blackout_mins: 30,
         exclude_asian_session: excludeAsian,
         use_full_history: useFullHistory,
+        strict_structural_entry: strictStructuralEntry,
         target_rr: targetRR,
       });
       setComparison(compRes);
@@ -227,6 +230,20 @@ export default function BacktestLab() {
       tp: 'Key Level Reversal Target: 2.0x Risk multiple (2.0 Risk:Reward ratio)',
       badge: 'bg-emerald-500/20 text-emerald-300 border-emerald-500/30',
     },
+    volume_profile: {
+      title: 'Model F: Volume Profile (Auction Market Theory)',
+      entry: 'Tests of Value Area Low (VAL), Point of Control (POC) mean reversion, and Low Volume Node (LVN) breakouts',
+      sl: 'Outside Value Area: VAL -$0.50 (BUY) / VAH +$0.50 (SELL)',
+      tp: 'Opposing Value Area Boundary or 2.5x Risk multiple (2.5 Risk:Reward ratio)',
+      badge: 'bg-purple-500/20 text-purple-300 border-purple-500/30',
+    },
+    footprint: {
+      title: 'Model G: Footprint & Order Flow (Delta Absorption)',
+      entry: 'Cumulative Volume Delta (CVD) divergences, trapped buyers at highs, and trapped sellers at candle extremes',
+      sl: 'Order Flow Invalidation: Candle Low -$0.50 (BUY) / Candle High +$0.50 (SELL)',
+      tp: 'Order Flow Expansion Target: 2.0x Risk multiple (2.0 Risk:Reward ratio)',
+      badge: 'bg-rose-500/20 text-rose-300 border-rose-500/30',
+    },
   };
 
   const currentStrategy = strategyDetails[modelType] || strategyDetails['ensemble'];
@@ -263,6 +280,8 @@ export default function BacktestLab() {
               <option value="smc_ict">Model B: SMC & ICT 2022 Mentorship</option>
               <option value="technical">Model A: Technical Momentum (Indicators)</option>
               <option value="price_action">Model D: Price Action (Wick Extremes)</option>
+              <option value="volume_profile">Model F: Volume Profile (Auction Theory)</option>
+              <option value="footprint">Model G: Footprint & Order Flow (Delta)</option>
             </select>
           </div>
 
@@ -422,6 +441,17 @@ export default function BacktestLab() {
             <span className="font-semibold text-emerald-400">📅 Full 2023–Present Dataset</span>
             <span className="text-[10px] text-gray-400">(All 274,619 M5 bars; uncheck for 30% OOS)</span>
           </label>
+
+          <label className="flex items-center space-x-2 text-gray-300 cursor-pointer select-none">
+            <input
+              type="checkbox"
+              checked={strictStructuralEntry}
+              onChange={(e) => setStrictStructuralEntry(e.target.checked)}
+              className="rounded bg-dark-800 border-dark-600 text-gold-500 focus:ring-0 w-3.5 h-3.5"
+            />
+            <span className="font-semibold text-cyan-400">🎯 Strict Structural Pattern Confluence</span>
+            <span className="text-[10px] text-gray-400">(Uncheck to trade purely on raw AI probability without pattern gates)</span>
+          </label>
         </div>
 
         {/* Action Buttons */}
@@ -447,11 +477,11 @@ export default function BacktestLab() {
             className="bg-dark-800 hover:bg-dark-750 border border-gold-500/40 text-gold-400 hover:text-gold-300 font-bold py-2 px-4 rounded text-xs flex items-center space-x-1.5 transition"
           >
             {comparisonLoading ? (
-              <span>Comparing 4 Models...</span>
+              <span>Comparing 6 Models...</span>
             ) : (
               <>
                 <BarChart3 className="w-3.5 h-3.5" />
-                <span>Compare All Models Side-by-Side</span>
+                <span>Compare All 6 Models Side-by-Side</span>
               </>
             )}
           </button>

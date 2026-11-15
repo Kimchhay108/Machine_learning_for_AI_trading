@@ -23,6 +23,8 @@ from src.models.price_action_model import PriceActionModel
 from src.models.regime_model import MarketRegimeModel
 from src.models.smc_model import SmartMoneyConceptsModel
 from src.models.technical_model import TechnicalAnalysisModel
+from src.models.volume_profile_model import VolumeProfileModel
+from src.models.footprint_model import FootprintModel
 
 logger = get_logger("models.ensemble")
 
@@ -37,18 +39,22 @@ class EnsemblePredictionModel:
         model_b: Optional[SmartMoneyConceptsModel] = None,
         model_c: Optional[MarketRegimeModel] = None,
         model_d: Optional[PriceActionModel] = None,
+        model_f: Optional[VolumeProfileModel] = None,
+        model_g: Optional[FootprintModel] = None,
     ):
         self.confidence_threshold = confidence_threshold
         self.model_a = model_a or TechnicalAnalysisModel()
         self.model_b = model_b or SmartMoneyConceptsModel()
         self.model_c = model_c or MarketRegimeModel()
         self.model_d = model_d or PriceActionModel()
+        self.model_f = model_f or VolumeProfileModel()
+        self.model_g = model_g or FootprintModel()
 
         self.calibrator: Optional[LogisticRegression] = None
         self.is_fitted = False
 
         # Baseline weights across models (equal weight prior)
-        self.weights = {"tech": 0.35, "smc": 0.40, "pa": 0.25}
+        self.weights = {"tech": 0.25, "smc": 0.25, "pa": 0.20, "vp": 0.15, "footprint": 0.15}
 
     def fit(
         self,
@@ -64,6 +70,8 @@ class EnsemblePredictionModel:
         self.model_a.fit(X_train, y_train, sample_weight=sample_weight)
         self.model_b.fit(X_train, y_train, sample_weight=sample_weight)
         self.model_d.fit(X_train, y_train, sample_weight=sample_weight)
+        self.model_f.fit(X_train, y_train, sample_weight=sample_weight)
+        self.model_g.fit(X_train, y_train, sample_weight=sample_weight)
 
         # Fit Regime model if regime labels provided
         if regime_labels is not None:
@@ -99,7 +107,13 @@ class EnsemblePredictionModel:
         prob_d = self.model_d.predict_proba(X)
 
         if self.calibrator is not None:
-            meta_X = np.hstack([prob_a, prob_b, prob_d])
+            n_in = getattr(self.calibrator, "n_features_in_", 9)
+            if n_in == 15:
+                prob_f = self.model_f.predict_proba(X)
+                prob_g = self.model_g.predict_proba(X)
+                meta_X = np.hstack([prob_a, prob_b, prob_d, prob_f, prob_g])
+            else:
+                meta_X = np.hstack([prob_a, prob_b, prob_d])
             calibrated_probs = self.calibrator.predict_proba(meta_X)
             return calibrated_probs
 
@@ -182,6 +196,8 @@ class EnsemblePredictionModel:
         self.model_b.save(v_dir / "model_b_smc.joblib")
         self.model_c.save(v_dir / "model_c_regime.joblib")
         self.model_d.save(v_dir / "model_d_price_action.joblib")
+        self.model_f.save(v_dir / "model_f_volume_profile.joblib")
+        self.model_g.save(v_dir / "model_g_footprint.joblib")
 
         if self.calibrator is not None:
             joblib.dump(self.calibrator, v_dir / "ensemble_calibrator.joblib")
@@ -204,6 +220,18 @@ class EnsemblePredictionModel:
         instance.model_b = SmartMoneyConceptsModel.load(v_dir / "model_b_smc.joblib")
         instance.model_c = MarketRegimeModel.load(v_dir / "model_c_regime.joblib")
         instance.model_d = PriceActionModel.load(v_dir / "model_d_price_action.joblib")
+
+        vp_path = v_dir / "model_f_volume_profile.joblib"
+        if vp_path.exists():
+            instance.model_f = VolumeProfileModel.load(vp_path)
+        else:
+            instance.model_f = VolumeProfileModel()
+
+        fp_path = v_dir / "model_g_footprint.joblib"
+        if fp_path.exists():
+            instance.model_g = FootprintModel.load(fp_path)
+        else:
+            instance.model_g = FootprintModel()
 
         cal_path = v_dir / "ensemble_calibrator.joblib"
         if cal_path.exists():

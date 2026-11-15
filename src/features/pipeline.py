@@ -15,6 +15,10 @@ from src.features.price_action import PriceActionFeatures
 from src.features.regime import MarketRegimeFeatures
 from src.features.smc import SmartMoneyConcepts
 from src.features.technical import TechnicalFeatures
+from src.features.volume_profile import (
+    compute_volume_profile_features,
+    compute_footprint_order_flow_features,
+)
 
 logger = get_logger("features.pipeline")
 
@@ -35,6 +39,11 @@ class FeaturePipeline:
         res = SmartMoneyConcepts.compute_all(res)
         res = PriceActionFeatures.compute_all(res)
         res = MarketRegimeFeatures.compute_all(res)
+        vp_feats = compute_volume_profile_features(res)
+        fp_feats = compute_footprint_order_flow_features(res)
+        res = pd.concat([res, vp_feats, fp_feats], axis=1)
+        # Deduplicate any potential overlapping columns
+        res = res.loc[:, ~res.columns.duplicated()]
         return res
 
     def build_multi_timeframe_feature_matrix(

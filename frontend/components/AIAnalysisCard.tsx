@@ -234,7 +234,7 @@ export default function AIAnalysisCard({ prediction, loading }: AIAnalysisCardPr
             <Layers className="w-3.5 h-3.5 text-gold-500" />
             <span>Sub-Model Agreement</span>
           </span>
-          <div className="grid grid-cols-3 gap-2 text-center text-xs">
+          <div className="grid grid-cols-2 md:grid-cols-5 gap-2 text-center text-xs">
             <div className="p-1.5 rounded bg-dark-800 border border-dark-700">
               <span className="text-gray-400 block text-[10px]">Model A (Tech)</span>
               {formatDecision(contributing_features.submodel_agreement.tech_prediction)}
@@ -246,6 +246,14 @@ export default function AIAnalysisCard({ prediction, loading }: AIAnalysisCardPr
             <div className="p-1.5 rounded bg-dark-800 border border-dark-700">
               <span className="text-gray-400 block text-[10px]">Model D (PA)</span>
               {formatDecision(contributing_features.submodel_agreement.price_action_prediction)}
+            </div>
+            <div className="p-1.5 rounded bg-dark-800 border border-dark-700">
+              <span className="text-gray-400 block text-[10px]">Model F (Vol Profile)</span>
+              {formatDecision(contributing_features.submodel_agreement.volume_profile_prediction ?? 1)}
+            </div>
+            <div className="p-1.5 rounded bg-dark-800 border border-dark-700">
+              <span className="text-gray-400 block text-[10px]">Model G (Footprint)</span>
+              {formatDecision(contributing_features.submodel_agreement.footprint_prediction ?? 1)}
             </div>
           </div>
         </div>
