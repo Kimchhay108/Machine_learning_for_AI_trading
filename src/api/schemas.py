@@ -108,6 +108,10 @@ class TrainResponse(BaseModel):
     metrics: Dict[str, Any]
 
 
+class ActivateModelRequest(BaseModel):
+    version: str = Field(description="Model version identifier to activate for production")
+
+
 class BacktestRequest(BaseModel):
     version: str = Field(default="v1.0.0", description="Model version to use")
     model_type: str = Field(default="ensemble", description="Strategy to backtest: 'ensemble', 'smc_ict', 'technical', 'price_action'")

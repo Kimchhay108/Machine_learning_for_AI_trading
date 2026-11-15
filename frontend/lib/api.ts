@@ -305,6 +305,25 @@ export async function triggerRetrain(
   return res.json();
 }
 
+export async function activateModel(
+  version: string,
+  adminKey: string = 'xauusd-admin-secret-key'
+): Promise<any> {
+  const res = await fetch(`${API_BASE}/api/ai/models/activate`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'X-Admin-Key': adminKey,
+    },
+    body: JSON.stringify({ version }),
+  });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({ detail: res.statusText }));
+    throw new Error(err.detail || 'Activate request failed');
+  }
+  return res.json();
+}
+
 export interface NewsEventItem {
   id: string;
   title: string;

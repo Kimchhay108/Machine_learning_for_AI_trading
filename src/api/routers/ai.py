@@ -11,11 +11,13 @@ import pandas as pd
 from sklearn.metrics import brier_score_loss, confusion_matrix
 
 from src.api.dependencies import (
+    get_active_version,
     get_prediction_engine,
     set_active_version,
     verify_admin_key,
 )
 from src.api.schemas import (
+    ActivateModelRequest,
     ModelInfo,
     ModelsListResponse,
     PerformanceResponse,
@@ -77,7 +79,7 @@ def list_models() -> ModelsListResponse:
 
     models: List[ModelInfo] = []
     versions = sorted([d.name for d in registry_dir.iterdir() if d.is_dir()])
-    active_version = "v1.0.0"
+    active_version = get_active_version()
 
     for v in versions:
         v_dir = registry_dir / v
@@ -333,6 +335,29 @@ def train_model(
         test_samples=len(X_test),
         metrics=comparisons,
     )
+
+
+@router.post("/models/activate")
+def activate_model(
+    req: ActivateModelRequest,
+    is_admin: bool = Depends(verify_admin_key),
+):
+    """Set a registered candidate model version as the active production model."""
+    registry_dir = settings.DATA_DIR / "models" / "registry"
+    target_dir = registry_dir / req.version
+    if not target_dir.exists():
+        raise HTTPException(
+            status_code=404,
+            detail=f"Model version '{req.version}' not found in registry at {target_dir}.",
+        )
+    set_active_version(req.version)
+    get_prediction_engine(req.version)
+    logger.info(f"Model version '{req.version}' successfully set as ACTIVE PRODUCTION.")
+    return {
+        "status": "SUCCESS",
+        "active_version": req.version,
+        "message": f"Model {req.version} is now the ACTIVE PRODUCTION model.",
+    }
 
 
 @router.post("/predictions/evaluate", response_model=PredictionEvaluationResponse)

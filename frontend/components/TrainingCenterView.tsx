@@ -1,17 +1,18 @@
 'use client';
 
 import React, { useState, useEffect } from 'react';
-import { ModelInfo, fetchModels, triggerRetrain } from '../lib/api';
-import { Cpu, RefreshCw, CheckCircle, Clock, ShieldAlert } from 'lucide-react';
+import { ModelInfo, fetchModels, triggerRetrain, activateModel } from '../lib/api';
+import { Cpu, RefreshCw, CheckCircle, Clock, ShieldAlert, Zap } from 'lucide-react';
 
 export default function TrainingCenterView() {
   const [models, setModels] = useState<ModelInfo[]>([]);
   const [activeVersion, setActiveVersion] = useState<string>('v1.0.0');
   const [loading, setLoading] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
+  const [activatingVersion, setActivatingVersion] = useState<string | null>(null);
 
   // Form states
-  const [newVersion, setNewVersion] = useState('v1.0.2');
+  const [newVersion, setNewVersion] = useState('v1.0.4');
   const [threshold, setThreshold] = useState(0.50);
   const [testRatio, setTestRatio] = useState(0.30);
   const [adminKey, setAdminKey] = useState('xauusd-admin-secret-key');
@@ -53,6 +54,20 @@ export default function TrainingCenterView() {
       setStatusMsg(`Retraining failed: ${err.message}`);
     } finally {
       setLoading(false);
+    }
+  };
+
+  const handleActivate = async (version: string) => {
+    setActivatingVersion(version);
+    setStatusMsg(null);
+    try {
+      const res = await activateModel(version, adminKey);
+      setStatusMsg(`Success! ${res.message}`);
+      loadModels();
+    } catch (err: any) {
+      setStatusMsg(`Activation failed: ${err.message}`);
+    } finally {
+      setActivatingVersion(null);
     }
   };
 
@@ -197,13 +212,29 @@ export default function TrainingCenterView() {
                 <tr key={m.version} className="hover:bg-dark-850/50">
                   <td className="py-2.5 px-3">
                     {m.is_active ? (
-                      <span className="bg-bull-500/20 text-bull-400 px-2 py-0.5 rounded text-[10px] font-bold">
-                        ACTIVE PRODUCTION
+                      <span className="inline-flex items-center space-x-1.5 bg-bull-500/20 border border-bull-500/40 text-bull-400 px-2.5 py-1 rounded text-[10px] font-bold">
+                        <span className="w-1.5 h-1.5 rounded-full bg-bull-400 animate-pulse" />
+                        <span>ACTIVE PRODUCTION</span>
                       </span>
                     ) : (
-                      <span className="bg-dark-700 text-gray-400 px-2 py-0.5 rounded text-[10px]">
-                        CANDIDATE / ARCHIVE
-                      </span>
+                      <div className="flex items-center space-x-2">
+                        <span className="bg-dark-750 text-gray-400 px-2 py-0.5 rounded text-[10px] font-mono">
+                          CANDIDATE
+                        </span>
+                        <button
+                          onClick={() => handleActivate(m.version)}
+                          disabled={activatingVersion === m.version}
+                          className="bg-gold-500/15 hover:bg-gold-500/30 text-gold-400 hover:text-gold-300 border border-gold-500/40 px-2.5 py-0.5 rounded text-[10px] font-bold transition flex items-center space-x-1 disabled:opacity-50"
+                          title={`Switch production engine to ${m.version}`}
+                        >
+                          {activatingVersion === m.version ? (
+                            <RefreshCw className="w-2.5 h-2.5 animate-spin" />
+                          ) : (
+                            <CheckCircle className="w-2.5 h-2.5" />
+                          )}
+                          <span>Set Active</span>
+                        </button>
+                      </div>
                     )}
                   </td>
                   <td className="py-2.5 px-3 font-mono font-bold text-white">{m.version}</td>

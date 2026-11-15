@@ -5,7 +5,7 @@ from datetime import datetime
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-from src.api.dependencies import get_duckdb_manager, get_prediction_engine
+from src.api.dependencies import get_duckdb_manager, get_prediction_engine, get_active_version
 from src.api.routers import ai, backtest, market, paper
 from src.core.config import settings
 from src.core.logger import get_logger
@@ -77,7 +77,7 @@ def health_check():
         "timestamp": datetime.utcnow().isoformat() + "Z",
         "environment": settings.ENVIRONMENT,
         "database": "DuckDB & Parquet Active",
-        "active_model": "v1.0.0",
+        "active_model": get_active_version(),
     }
 
 

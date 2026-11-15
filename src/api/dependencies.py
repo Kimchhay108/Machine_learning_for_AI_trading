@@ -23,6 +23,20 @@ _active_prediction_engine: Optional[PredictionEngine] = None
 _active_version: str = "v1.0.0"
 
 
+def get_active_version() -> str:
+    """Retrieve the currently active production model version, checking persistent disk state first."""
+    global _active_version
+    active_file = settings.DATA_DIR / "models" / "active_version.txt"
+    if active_file.exists():
+        try:
+            persisted = active_file.read_text(encoding="utf-8").strip()
+            if persisted:
+                _active_version = persisted
+        except Exception:
+            pass
+    return _active_version
+
+
 def get_parquet_storage() -> ParquetStorage:
     global _parquet_storage
     if _parquet_storage is None:
@@ -40,7 +54,8 @@ def get_duckdb_manager() -> DuckDBManager:
 
 def get_prediction_engine(version: Optional[str] = None) -> PredictionEngine:
     global _active_ensemble, _active_prediction_engine, _active_version
-    target_version = version or _active_version
+    current_active = get_active_version()
+    target_version = version or current_active
     registry_dir = settings.DATA_DIR / "models" / "registry"
 
     if _active_prediction_engine is not None and _active_version == target_version:
@@ -70,9 +85,17 @@ def get_prediction_engine(version: Optional[str] = None) -> PredictionEngine:
 
 
 def set_active_version(version: str) -> None:
+    """Set the active production model version in memory and persist to disk."""
     global _active_version, _active_prediction_engine
     _active_version = version
     _active_prediction_engine = None  # Force reload on next request
+    try:
+        active_file = settings.DATA_DIR / "models" / "active_version.txt"
+        active_file.parent.mkdir(parents=True, exist_ok=True)
+        active_file.write_text(version, encoding="utf-8")
+        logger.info(f"Persisted active model version '{version}' to {active_file}")
+    except Exception as e:
+        logger.warning(f"Could not persist active version to disk: {e}")
 
 
 def verify_admin_key(x_admin_key: Optional[str] = Header(None, alias="X-Admin-Key")) -> bool:
