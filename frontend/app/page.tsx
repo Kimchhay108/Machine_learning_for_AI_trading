@@ -15,6 +15,7 @@ import {
 } from '../lib/api';
 import TradingViewChart from '../components/TradingViewChart';
 import AIAnalysisCard from '../components/AIAnalysisCard';
+import ZoqiraSignalTerminal from '../components/ZoqiraSignalTerminal';
 import BacktestLab from '../components/BacktestLab';
 import ModelPerformanceView from '../components/ModelPerformanceView';
 import TrainingCenterView from '../components/TrainingCenterView';
@@ -37,6 +38,7 @@ import {
 
 type TabType =
   | 'overview'
+  | 'zoqira'
   | 'chart'
   | 'analysis'
   | 'history'
@@ -210,14 +212,15 @@ export default function DashboardPage() {
       <nav className="bg-dark-850 border-b border-dark-700 px-6 py-1 flex space-x-1 overflow-x-auto">
         {[
           { id: 'overview', label: '1. Overview', icon: LineChart },
-          { id: 'chart', label: '2. Live Chart', icon: BarChart3 },
-          { id: 'analysis', label: '3. AI Analysis', icon: Activity },
-          { id: 'history', label: '4. Prediction History', icon: History },
-          { id: 'performance', label: '5. Model Performance', icon: Layers },
-          { id: 'training', label: '6. Training Center', icon: Cpu },
-          { id: 'backtest', label: '7. Backtesting Lab', icon: Sparkles },
-          { id: 'paper', label: '8. Paper Trading', icon: Wallet },
-          { id: 'settings', label: '9. Settings', icon: Settings },
+          { id: 'zoqira', label: '⚡ 2. Zoqira Indicators & Signals', icon: Sparkles },
+          { id: 'chart', label: '3. Live Chart', icon: BarChart3 },
+          { id: 'analysis', label: '4. AI Model Setups', icon: Activity },
+          { id: 'history', label: '5. Prediction History', icon: History },
+          { id: 'performance', label: '6. Model Performance', icon: Layers },
+          { id: 'training', label: '7. Training Center', icon: Cpu },
+          { id: 'backtest', label: '8. Backtesting Lab', icon: Layers },
+          { id: 'paper', label: '9. Paper Trading', icon: Wallet },
+          { id: 'settings', label: '10. Settings', icon: Settings },
         ].map((tab) => {
           const Icon = tab.icon;
           const isActive = activeTab === tab.id;
@@ -272,9 +275,46 @@ export default function DashboardPage() {
               />
             </div>
             <div className="xl:col-span-1 space-y-4 overflow-y-auto">
+              {/* Zoqira Terminal Quick Launch Pill */}
+              <div
+                onClick={() => setActiveTab('zoqira')}
+                className="p-3.5 rounded-xl bg-gradient-to-r from-gold-500/20 via-amber-500/10 to-[#050816] border border-gold-500/30 cursor-pointer hover:border-gold-500/60 transition shadow-sm flex items-center justify-between"
+              >
+                <div className="flex items-center space-x-2.5">
+                  <div className="w-7 h-7 rounded-lg bg-gold-500/20 border border-gold-500/40 flex items-center justify-center">
+                    <Sparkles className="w-3.5 h-3.5 text-gold-400" />
+                  </div>
+                  <div>
+                    <span className="text-xs font-bold text-white block font-['Sora']">
+                      ⚡ Zoqira Indicators Terminal
+                    </span>
+                    <span className="text-[10px] text-gray-400 block">
+                      Condition Score (0-6) • 4-Col Price Matrix
+                    </span>
+                  </div>
+                </div>
+                <span className="text-[10px] font-black px-2 py-1 rounded bg-gold-500 text-dark-950">
+                  OPEN
+                </span>
+              </div>
+
               <AIAnalysisCard prediction={prediction} loading={loading} />
             </div>
           </div>
+        )}
+
+        {activeTab === 'zoqira' && (
+          <ZoqiraSignalTerminal
+            candles={candles}
+            features={features}
+            prediction={prediction}
+            marketStatus={marketStatus}
+            newsStatus={newsStatus}
+            timeframe={timeframe}
+            onTimeframeChange={(tf) => setTimeframe(tf)}
+            onRefresh={() => loadData(timeframe)}
+            refreshing={refreshing}
+          />
         )}
 
         {activeTab === 'chart' && (
