@@ -88,6 +88,17 @@ class ParquetStorage:
         clean_df = df[CANONICAL_COLUMNS].copy()
         clean_df["timestamp"] = clean_df["timestamp"].astype("int64")
 
+        # Strict Policy: Filter out any historical data behind 2023
+        min_cutoff_ts = 1672531200000  # 2023-01-01 00:00:00 UTC
+        if (clean_df["timestamp"] < min_cutoff_ts).any():
+            pre_count = (clean_df["timestamp"] < min_cutoff_ts).sum()
+            logger.info(f"Filtered out {pre_count} candles prior to 2023-01-01 (strict 2023-2026 data policy).")
+            clean_df = clean_df[clean_df["timestamp"] >= min_cutoff_ts].copy()
+
+        if clean_df.empty:
+            logger.warning("All candles in DataFrame were prior to 2023. No files written.")
+            return []
+
         # Create year-month partition column
         dt_series = pd.to_datetime(clean_df["timestamp"], unit="ms", utc=True)
         clean_df["partition_key"] = dt_series.dt.strftime("%Y_%m")
@@ -142,6 +153,8 @@ class ParquetStorage:
         target_dir = self._get_target_dir(is_processed, instrument, tf_str)
 
         parquet_files = sorted(list(target_dir.glob("*.parquet")))
+        # Strict Policy: Only load partitions from 2023 onwards
+        parquet_files = [f for f in parquet_files if f.stem >= "2023_01"]
         if not parquet_files:
             return pd.DataFrame(columns=CANONICAL_COLUMNS)
 
@@ -160,9 +173,12 @@ class ParquetStorage:
         df = full_table.to_pandas()
 
         # Date filtering
+        min_cutoff_ts = 1672531200000  # Strict policy: 2023-01-01 00:00:00 UTC
+        df = df[df["timestamp"] >= min_cutoff_ts]
+
         if start_date is not None:
             start_ts = int(start_date.replace(tzinfo=timezone.utc).timestamp() * 1000)
-            df = df[df["timestamp"] >= start_ts]
+            df = df[df["timestamp"] >= max(start_ts, min_cutoff_ts)]
 
         if end_date is not None:
             end_ts = int(end_date.replace(tzinfo=timezone.utc).timestamp() * 1000)
@@ -182,6 +198,8 @@ class ParquetStorage:
         tf_str = timeframe.value if isinstance(timeframe, Timeframe) else timeframe.lower()
         target_dir = self._get_target_dir(is_processed, instrument, tf_str)
         parquet_files = sorted(list(target_dir.glob("*.parquet")))
+        # Strict Policy: Only consider partitions from 2023 onwards
+        parquet_files = [f for f in parquet_files if f.stem >= "2023_01"]
 
         if not parquet_files:
             return None

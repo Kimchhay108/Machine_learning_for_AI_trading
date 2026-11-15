@@ -77,7 +77,7 @@ class DuckDBManager:
             # Check if any parquet files exist before creating view
             files = list((self.processed_dir / inst_lower / tf).glob("*.parquet"))
             if files:
-                sql = f"CREATE OR REPLACE VIEW {proc_view} AS SELECT * FROM read_parquet('{proc_pattern}') ORDER BY timestamp ASC;"
+                sql = f"CREATE OR REPLACE VIEW {proc_view} AS SELECT * FROM read_parquet('{proc_pattern}') WHERE timestamp >= 1672531200000 ORDER BY timestamp ASC;"
                 conn.execute(sql)
                 created_views.append(proc_view)
                 logger.info(f"Registered DuckDB view: {proc_view}")
@@ -87,7 +87,7 @@ class DuckDBManager:
             raw_view = f"v_{inst_lower}_{tf}_raw"
             raw_files = list((self.raw_dir / inst_lower / tf).glob("*.parquet"))
             if raw_files:
-                sql = f"CREATE OR REPLACE VIEW {raw_view} AS SELECT * FROM read_parquet('{raw_pattern}') ORDER BY timestamp ASC;"
+                sql = f"CREATE OR REPLACE VIEW {raw_view} AS SELECT * FROM read_parquet('{raw_pattern}') WHERE timestamp >= 1672531200000 ORDER BY timestamp ASC;"
                 conn.execute(sql)
                 created_views.append(raw_view)
                 logger.info(f"Registered DuckDB view: {raw_view}")

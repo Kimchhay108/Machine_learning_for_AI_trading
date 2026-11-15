@@ -76,6 +76,14 @@ class HistoricalDownloader:
         start_dt = self._parse_date(start_date)
         end_dt = self._parse_date(end_date)
 
+        # Enforce strict 2023-2026 data policy
+        min_allowed_dt = datetime(2023, 1, 1, tzinfo=timezone.utc)
+        if start_dt < min_allowed_dt:
+            logger.info(
+                f"start_date ({start_dt.date()}) clamped to 2023-01-01 per strict 2023-2026 data policy."
+            )
+            start_dt = min_allowed_dt
+
         if start_dt > end_dt:
             raise ValueError(f"start_date ({start_dt}) cannot be after end_date ({end_dt})")
 

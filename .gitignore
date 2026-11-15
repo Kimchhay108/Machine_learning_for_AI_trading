@@ -32,6 +32,12 @@ ENV/
 *.db
 *.sqlite
 
+# Large Parquet Data & Backtest Results
+*.parquet
+data/backtests/
+data/news/
+data/reports/
+
 # Testing & Coverage
 .pytest_cache/
 .coverage
