@@ -229,6 +229,18 @@ class TradeRecordSchema(BaseModel):
     lesson_learned: Optional[str] = None
 
 
+class MonthlyPerformanceSchema(BaseModel):
+    year: int
+    month: int
+    period: str
+    total_trades: int
+    winning_trades: int
+    losing_trades: int
+    win_rate_pct: float
+    net_profit: float
+    profit_factor: float
+
+
 class BacktestResponse(BaseModel):
     initial_balance: float
     final_balance: float
@@ -248,6 +260,7 @@ class BacktestResponse(BaseModel):
     avg_r_multiple: float
     equity_curve: List[float]
     trades: List[TradeRecordSchema]
+    monthly_breakdown: List[MonthlyPerformanceSchema] = []
     forensics: Optional[ForensicsSummarySchema] = None
 
 

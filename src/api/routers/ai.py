@@ -11,6 +11,7 @@ import pandas as pd
 from sklearn.metrics import brier_score_loss, confusion_matrix
 
 from src.api.dependencies import (
+    delete_model_version,
     get_active_version,
     get_prediction_engine,
     set_active_version,
@@ -358,6 +359,15 @@ def activate_model(
         "active_version": req.version,
         "message": f"Model {req.version} is now the ACTIVE PRODUCTION model.",
     }
+
+
+@router.delete("/models/{version}")
+def delete_model(
+    version: str,
+    is_admin: bool = Depends(verify_admin_key),
+):
+    """Delete a model version from the registry with automatic active fallback."""
+    return delete_model_version(version)
 
 
 @router.post("/predictions/evaluate", response_model=PredictionEvaluationResponse)

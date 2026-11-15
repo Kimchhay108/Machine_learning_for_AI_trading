@@ -31,6 +31,7 @@ import {
   Sliders,
   Clock,
   Brain,
+  Calendar,
 } from 'lucide-react';
 
 export default function BacktestLab() {
@@ -885,6 +886,75 @@ export default function BacktestLab() {
               </div>
             </div>
           )}
+        </div>
+      )}
+
+      {/* Monthly Performance Breakdown (SL, TP & Profit by Year/Month) */}
+      {results && results.monthly_breakdown && results.monthly_breakdown.length > 0 && (
+        <div className="bg-dark-900 border border-dark-700 rounded-lg p-5">
+          <div className="flex items-center justify-between mb-3">
+            <h3 className="text-xs font-bold uppercase tracking-wider text-gray-300 flex items-center space-x-2">
+              <Calendar className="w-4 h-4 text-gold-500" />
+              <span>Monthly Performance Breakdown (Year & Month SL & Profit Report)</span>
+            </h3>
+            <span className="text-xs text-gray-400">
+              {results.monthly_breakdown.length} Months Tracked across Historical Dataset
+            </span>
+          </div>
+
+          <div className="overflow-x-auto max-h-72 overflow-y-auto">
+            <table className="w-full text-left text-xs">
+              <thead className="bg-dark-850 text-gray-400 sticky top-0 border-dark-700 border-b">
+                <tr>
+                  <th className="py-2 px-3">Period</th>
+                  <th className="py-2 px-3">Total Trades</th>
+                  <th className="py-2 px-3 text-bull-400">Winning Trades (TP)</th>
+                  <th className="py-2 px-3 text-bear-400">Losing Trades (SL Hits)</th>
+                  <th className="py-2 px-3">Win Rate %</th>
+                  <th className="py-2 px-3 text-right">Net Profit ($)</th>
+                  <th className="py-2 px-3 text-right">Profit Factor</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-dark-800 text-gray-300 font-mono">
+                {results.monthly_breakdown.map((m) => {
+                  const isProfitable = m.net_profit >= 0;
+                  return (
+                    <tr key={m.period} className="hover:bg-dark-850/50">
+                      <td className="py-2 px-3 font-bold text-white">{m.period}</td>
+                      <td className="py-2 px-3 text-gray-300">{m.total_trades}</td>
+                      <td className="py-2 px-3 text-bull-400 font-bold">{m.winning_trades}</td>
+                      <td className="py-2 px-3 text-bear-400 font-bold">{m.losing_trades}</td>
+                      <td className="py-2 px-3">
+                        <span
+                          className={`px-1.5 py-0.5 rounded text-[11px] font-bold ${
+                            m.win_rate_pct >= 40
+                              ? 'bg-bull-500/15 text-bull-400'
+                              : 'bg-dark-750 text-gray-400'
+                          }`}
+                        >
+                          {m.win_rate_pct.toFixed(2)}%
+                        </span>
+                      </td>
+                      <td
+                        className={`py-2 px-3 text-right font-bold ${
+                          isProfitable ? 'text-bull-400' : 'text-bear-400'
+                        }`}
+                      >
+                        {isProfitable ? '+' : ''}${m.net_profit.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                      </td>
+                      <td
+                        className={`py-2 px-3 text-right font-bold ${
+                          m.profit_factor >= 1.0 ? 'text-bull-400' : 'text-bear-400'
+                        }`}
+                      >
+                        {m.profit_factor.toFixed(2)}
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
         </div>
       )}
 

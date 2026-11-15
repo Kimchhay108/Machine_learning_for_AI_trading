@@ -206,3 +206,46 @@ class TestAPIEndpoints:
             assert item["total_trades"] >= 0
             assert "sl_tp_logic" in item
 
+    def test_backtest_monthly_breakdown(self, client: TestClient):
+        """Verify backtest results return monthly performance breakdown."""
+        res = client.get("/api/backtest/results")
+        assert res.status_code == 200
+        data = res.json()
+        assert "monthly_breakdown" in data
+        assert len(data["monthly_breakdown"]) > 0
+        first_m = data["monthly_breakdown"][0]
+        assert "year" in first_m
+        assert "month" in first_m
+        assert "period" in first_m
+        assert "total_trades" in first_m
+        assert "winning_trades" in first_m
+        assert "losing_trades" in first_m
+        assert "win_rate_pct" in first_m
+        assert "net_profit" in first_m
+        assert "profit_factor" in first_m
+
+    def test_delete_model_version(self, client: TestClient):
+        """Verify model version deletion with admin authentication and error handling."""
+        import shutil
+        registry_dir = settings.DATA_DIR / "models" / "registry"
+        dummy_dir = registry_dir / "v_test_delete_candidate"
+        dummy_dir.mkdir(parents=True, exist_ok=True)
+        (dummy_dir / "dummy.txt").write_text("dummy model content", encoding="utf-8")
+
+        # 1. Unauthorized without X-Admin-Key
+        res_unauth = client.delete("/api/ai/models/v_test_delete_candidate")
+        assert res_unauth.status_code == 401
+
+        # 2. Successfully delete candidate
+        headers = {"X-Admin-Key": settings.API_ADMIN_KEY}
+        res_del = client.delete("/api/ai/models/v_test_delete_candidate", headers=headers)
+        assert res_del.status_code == 200
+        data = res_del.json()
+        assert data["status"] == "SUCCESS"
+        assert data["deleted_version"] == "v_test_delete_candidate"
+        assert not dummy_dir.exists()
+
+        # 3. 404 on deleting non-existent model
+        res_404 = client.delete("/api/ai/models/v_non_existent_model_999", headers=headers)
+        assert res_404.status_code == 404
+

@@ -1,8 +1,8 @@
 'use client';
 
 import React, { useState, useEffect } from 'react';
-import { ModelInfo, fetchModels, triggerRetrain, activateModel } from '../lib/api';
-import { Cpu, RefreshCw, CheckCircle, Clock, ShieldAlert, Zap } from 'lucide-react';
+import { ModelInfo, fetchModels, triggerRetrain, activateModel, deleteModel } from '../lib/api';
+import { Cpu, RefreshCw, CheckCircle, Clock, ShieldAlert, Zap, Trash2 } from 'lucide-react';
 
 export default function TrainingCenterView() {
   const [models, setModels] = useState<ModelInfo[]>([]);
@@ -10,6 +10,7 @@ export default function TrainingCenterView() {
   const [loading, setLoading] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
   const [activatingVersion, setActivatingVersion] = useState<string | null>(null);
+  const [deletingVersion, setDeletingVersion] = useState<string | null>(null);
 
   // Form states
   const [newVersion, setNewVersion] = useState('v1.0.4');
@@ -68,6 +69,23 @@ export default function TrainingCenterView() {
       setStatusMsg(`Activation failed: ${err.message}`);
     } finally {
       setActivatingVersion(null);
+    }
+  };
+
+  const handleDelete = async (version: string) => {
+    const isConfirmed = window.confirm(`Are you sure you want to delete model version "${version}" from registry? This action cannot be undone.`);
+    if (!isConfirmed) return;
+
+    setDeletingVersion(version);
+    setStatusMsg(null);
+    try {
+      const res = await deleteModel(version, adminKey);
+      setStatusMsg(`Success! ${res.message}`);
+      loadModels();
+    } catch (err: any) {
+      setStatusMsg(`Delete failed: ${err.message}`);
+    } finally {
+      setDeletingVersion(null);
     }
   };
 
@@ -205,6 +223,7 @@ export default function TrainingCenterView() {
                 <th className="py-2.5 px-3">Sub-Models</th>
                 <th className="py-2.5 px-3">Selective Threshold</th>
                 <th className="py-2.5 px-3">Registered At</th>
+                <th className="py-2.5 px-3 text-right">Actions</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-dark-800 text-gray-300">
@@ -250,6 +269,21 @@ export default function TrainingCenterView() {
                   </td>
                   <td className="py-2.5 px-3 font-mono">{(m.confidence_threshold * 100).toFixed(0)}%</td>
                   <td className="py-2.5 px-3 text-gray-400 font-mono">{m.train_date || 'N/A'}</td>
+                  <td className="py-2.5 px-3 text-right">
+                    <button
+                      onClick={() => handleDelete(m.version)}
+                      disabled={deletingVersion === m.version}
+                      className="bg-bear-500/10 hover:bg-bear-500/25 text-bear-400 hover:text-bear-300 border border-bear-500/30 px-2.5 py-1 rounded text-[10px] font-bold transition inline-flex items-center space-x-1 disabled:opacity-50"
+                      title={`Delete model version ${m.version} from registry`}
+                    >
+                      {deletingVersion === m.version ? (
+                        <RefreshCw className="w-2.5 h-2.5 animate-spin" />
+                      ) : (
+                        <Trash2 className="w-2.5 h-2.5" />
+                      )}
+                      <span>Delete</span>
+                    </button>
+                  </td>
                 </tr>
               ))}
             </tbody>

@@ -182,6 +182,18 @@ export interface ForensicsSummary {
   sample_diagnoses: TradeForensicsItem[];
 }
 
+export interface MonthlyPerformanceItem {
+  year: number;
+  month: number;
+  period: string;
+  total_trades: number;
+  winning_trades: number;
+  losing_trades: number;
+  win_rate_pct: number;
+  net_profit: number;
+  profit_factor: number;
+}
+
 export interface BacktestResponse {
   initial_balance: number;
   final_balance: number;
@@ -201,6 +213,7 @@ export interface BacktestResponse {
   avg_r_multiple: number;
   equity_curve: number[];
   trades: TradeRecord[];
+  monthly_breakdown?: MonthlyPerformanceItem[];
   forensics?: ForensicsSummary;
 }
 
@@ -322,6 +335,24 @@ export async function activateModel(
   if (!res.ok) {
     const err = await res.json().catch(() => ({ detail: res.statusText }));
     throw new Error(err.detail || 'Activate request failed');
+  }
+  return res.json();
+}
+
+export async function deleteModel(
+  version: string,
+  adminKey: string = 'xauusd-admin-secret-key'
+): Promise<any> {
+  const res = await fetch(`${API_BASE}/api/ai/models/${version}`, {
+    method: 'DELETE',
+    headers: {
+      'Content-Type': 'application/json',
+      'X-Admin-Key': adminKey,
+    },
+  });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({ detail: res.statusText }));
+    throw new Error(err.detail || 'Delete request failed');
   }
   return res.json();
 }

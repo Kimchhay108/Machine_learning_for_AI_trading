@@ -14,6 +14,7 @@ from src.api.schemas import (
     BacktestResponse,
     ForensicsSummarySchema,
     ModelComparisonItem,
+    MonthlyPerformanceSchema,
     TradeForensicsItemSchema,
     TradeRecordSchema,
 )
@@ -521,6 +522,7 @@ def _format_backtest_response(result: BacktestResult, test_df: Optional[pd.DataF
             logger.warning(f"Could not compute trade forensics: {e}")
 
     trades_schema = []
+    monthly_data = {}
     for t in result.trades:
         e_time = int(t.entry_time // 1000 if t.entry_time > 10_000_000_000 else t.entry_time)
         diag = diag_lookup.get(int(t.entry_time))
@@ -543,6 +545,53 @@ def _format_backtest_response(result: BacktestResult, test_df: Optional[pd.DataF
             )
         )
 
+        # Monthly aggregation
+        dt = pd.to_datetime(e_time, unit="s", utc=True)
+        key = (dt.year, dt.month)
+        if key not in monthly_data:
+            monthly_data[key] = {
+                "year": int(dt.year),
+                "month": int(dt.month),
+                "period": f"{dt.year}-{dt.month:02d}",
+                "total_trades": 0,
+                "winning_trades": 0,
+                "losing_trades": 0,
+                "net_profit": 0.0,
+                "gross_win": 0.0,
+                "gross_loss": 0.0,
+            }
+        m = monthly_data[key]
+        m["total_trades"] += 1
+        m["net_profit"] += t.pnl_usd
+        if t.pnl_usd > 0.01:
+            m["winning_trades"] += 1
+            m["gross_win"] += t.pnl_usd
+        elif t.pnl_usd < -0.01:
+            m["losing_trades"] += 1
+            m["gross_loss"] += abs(t.pnl_usd)
+
+    monthly_breakdown = []
+    for key in sorted(monthly_data.keys()):
+        m = monthly_data[key]
+        tot = m["total_trades"]
+        wins = m["winning_trades"]
+        losses = m["losing_trades"]
+        wr = round((wins / tot) * 100, 2) if tot > 0 else 0.0
+        pf = round(m["gross_win"] / m["gross_loss"], 3) if m["gross_loss"] > 0 else (999.0 if m["gross_win"] > 0 else 1.0)
+        monthly_breakdown.append(
+            MonthlyPerformanceSchema(
+                year=m["year"],
+                month=m["month"],
+                period=m["period"],
+                total_trades=tot,
+                winning_trades=wins,
+                losing_trades=losses,
+                win_rate_pct=wr,
+                net_profit=round(m["net_profit"], 2),
+                profit_factor=pf,
+            )
+        )
+
     return BacktestResponse(
         initial_balance=round(result.initial_balance, 2),
         final_balance=round(result.final_balance, 2),
@@ -562,6 +611,7 @@ def _format_backtest_response(result: BacktestResult, test_df: Optional[pd.DataF
         avg_r_multiple=round(result.avg_r_multiple, 3),
         equity_curve=[round(val, 2) for val in result.equity_curve],
         trades=trades_schema,
+        monthly_breakdown=monthly_breakdown,
         forensics=forensics_summary,
     )
 
