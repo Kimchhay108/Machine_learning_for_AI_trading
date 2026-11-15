@@ -162,3 +162,39 @@ class TestPaperRouterAPI:
         res_trades = test_client.get("/api/paper/trades")
         assert res_trades.status_code == 200
         assert isinstance(res_trades.json(), list)
+
+    def test_asian_session_blackout(self, tmp_path):
+        """Verify paper trader blocks entry between 21:00 and 07:00 UTC."""
+        state_file = tmp_path / "paper_state_asian.json"
+        engine = PaperTradingEngine(state_file=state_file, exclude_asian_session=True)
+
+        candle_asian = pd.Series({
+            "timestamp": 1714521600000,  # 2024-05-01 00:00:00 UTC (Asian session)
+            "open": 2320.0,
+            "high": 2322.0,
+            "low": 2319.0,
+            "close": 2321.0,
+        })
+
+        pred = TradePrediction(
+            instrument="XAUUSD",
+            timeframe="M5",
+            prediction_timestamp=1714521600000,
+            direction="BUY",
+            bullish_probability=0.85,
+            bearish_probability=0.05,
+            neutral_probability=0.10,
+            confidence=0.85,
+            market_regime="Bullish_Trend",
+            entry_reference_price=2321.0,
+            stop_loss_reference=2316.0,
+            take_profit_reference=2331.0,
+            risk_reward_ratio=2.0,
+            model_version="v1.0.0",
+            contributing_features={},
+        )
+
+        res = engine.process_candle(candle_asian, prediction=pred)
+        assert res["action"] == "WAIT"
+        assert "Asian Session Blackout" in res["message"]
+        assert engine.open_position is None

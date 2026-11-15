@@ -44,6 +44,7 @@ def generate_strategy_signals_and_levels(
     learn_from_mistakes: bool = True,
     filter_high_impact_news: bool = True,
     news_blackout_mins: int = 30,
+    exclude_asian_session: bool = True,
 ) -> Tuple[List[str], List[float], List[float], str, str]:
     """Generate model-tailored signals, Entry, Stop-Loss, and Take-Profit price levels.
 
@@ -53,6 +54,7 @@ def generate_strategy_signals_and_levels(
     - Model A (Technical): EMA Trend & RSI Momentum + Volatility Envelope Stop (1.5x ATR).
     - Model D (Price Action): Candle Rejection Wicks & Pin Bars + Candle Wick Extreme High/Low Stop ($0.50 buffer).
     - Session Filter: Restricts entries to London (07:00-10:00 UTC) & NY (12:00-15:00 UTC) Killzones when only_killzones is enabled.
+    - Strict Asian Blackout: Forbids trade entries during Tokyo/Sydney Asian Session (21:00-07:00 UTC) when exclude_asian_session is enabled.
     - H1 Macro Trend Gatekeeper: Price > H1 200 EMA & H1 Trend >= 0 for BUY; Price < H1 200 EMA & H1 Trend <= 0 for SELL.
     - AI Failure Memory: Vetoes entries matching historical loss fingerprints (low momentum chop, climax exhaustion, volatility expansion).
     - High-Impact News Blackout: Keeps out of XAUUSD during major USD economic announcements (NFP, CPI, FOMC, GDP).
@@ -69,16 +71,24 @@ def generate_strategy_signals_and_levels(
         atr = np.full(n, 2.0)
     atr = np.where(np.isnan(atr) | (atr <= 0), 2.0, atr)
 
-    # Time-based filters (Killzones & High-Impact News Blackouts)
+    # Time-based filters (Asian Session Blackout, Killzones & High-Impact News Blackouts)
     if "timestamp" in test_df.columns and len(test_df) > 0:
         first_ts = test_df["timestamp"].iloc[0]
         unit = "ms" if first_ts > 1e11 else "s"
         dt = pd.to_datetime(test_df["timestamp"], unit=unit, utc=True)
+        hours = dt.dt.hour.to_numpy()
+
+        # Strict Asian Session Exclusion: Never trade 21:00 to 07:00 UTC (Tokyo/Sydney low liquidity consolidation)
+        is_asian = (hours >= 21) | (hours < 7)
+
         if only_killzones:
-            hours = dt.dt.hour.to_numpy()
             in_killzones = ((hours >= 7) & (hours <= 10)) | ((hours >= 12) & (hours <= 15))
         else:
-            in_killzones = np.ones(n, dtype=bool)
+            in_killzones = ~is_asian if exclude_asian_session else np.ones(n, dtype=bool)
+
+        # Guarantee Asian session candles are strictly blocked whenever exclude_asian_session is active
+        if exclude_asian_session:
+            in_killzones = in_killzones & (~is_asian)
 
         if filter_high_impact_news:
             from src.models.news_filter import get_news_filter
@@ -392,10 +402,16 @@ def run_backtest(req: BacktestRequest) -> BacktestResponse:
 
     engine: PredictionEngine = get_prediction_engine(req.version)
 
-    # Split: test period is out-of-sample last 30%
+    # Historical scope: Full multi-year dataset (2023-present) or 30% out-of-sample slice
     n = len(df_feats)
-    test_start = int(n * 0.70) + 12
-    test_df = df_feats.iloc[test_start:].reset_index(drop=True)
+    use_full = getattr(req, "use_full_history", True)
+    if use_full:
+        test_df = df_feats.reset_index(drop=True)
+        logger.info(f"Executing backtest across FULL multi-year dataset ({len(test_df)} candles from 2023-present).")
+    else:
+        test_start = int(n * 0.70) + 12
+        test_df = df_feats.iloc[test_start:].reset_index(drop=True)
+        logger.info(f"Executing backtest across 30% Out-of-Sample slice ({len(test_df)} candles).")
 
     signals, sl_levels, tp_levels, model_name, sl_tp_logic = generate_strategy_signals_and_levels(
         req.model_type,
@@ -410,6 +426,7 @@ def run_backtest(req: BacktestRequest) -> BacktestResponse:
         learn_from_mistakes=getattr(req, "learn_from_mistakes", True),
         filter_high_impact_news=getattr(req, "filter_high_impact_news", True),
         news_blackout_mins=getattr(req, "news_blackout_mins", 30),
+        exclude_asian_session=getattr(req, "exclude_asian_session", True),
     )
 
     backtester = RealisticBacktestEngine(
@@ -463,8 +480,12 @@ def _execute_comparison(req: BacktestRequest) -> BacktestComparisonResponse:
     engine: PredictionEngine = get_prediction_engine(req.version)
 
     n = len(df_feats)
-    test_start = int(n * 0.70) + 12
-    test_df = df_feats.iloc[test_start:].reset_index(drop=True)
+    use_full = getattr(req, "use_full_history", True)
+    if use_full:
+        test_df = df_feats.reset_index(drop=True)
+    else:
+        test_start = int(n * 0.70) + 12
+        test_df = df_feats.iloc[test_start:].reset_index(drop=True)
 
     model_keys = ["ensemble", "smc_ict", "technical", "price_action"]
     optimal_tfs = {
@@ -489,6 +510,7 @@ def _execute_comparison(req: BacktestRequest) -> BacktestComparisonResponse:
             learn_from_mistakes=getattr(req, "learn_from_mistakes", True),
             filter_high_impact_news=getattr(req, "filter_high_impact_news", True),
             news_blackout_mins=getattr(req, "news_blackout_mins", 30),
+            exclude_asian_session=getattr(req, "exclude_asian_session", True),
         )
 
         backtester = RealisticBacktestEngine(

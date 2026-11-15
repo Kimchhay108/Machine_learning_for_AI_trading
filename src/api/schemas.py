@@ -131,6 +131,8 @@ class BacktestRequest(BaseModel):
     learn_from_mistakes: bool = Field(default=True, description="AI Failure Memory: Vetoes setups matching historical loss fingerprints (low momentum chop, climax exhaustion, volatility spikes)")
     filter_high_impact_news: bool = Field(default=True, description="News Blackout: Abstain from trading ±30m around high-impact USD events (NFP, CPI, FOMC, GDP, etc.)")
     news_blackout_mins: int = Field(default=30, description="Minutes before and after high-impact news release to block trade entries")
+    exclude_asian_session: bool = Field(default=True, description="Strict Asian Session Blackout: Do NOT trade between 21:00 and 07:00 UTC")
+    use_full_history: bool = Field(default=True, description="Backtest the full multi-year 2023-present dataset (all 274k+ bars) instead of only the 30% out-of-sample slice")
     target_rr: Optional[float] = Field(default=None, description="Optional target Risk:Reward ratio (e.g. 1.2, 1.5, 2.0)")
 
 

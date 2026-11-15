@@ -66,6 +66,11 @@ class TradeForensicsEngine:
             "explanation": "Position entered inside a Tier-1 USD news blackout window (NFP/CPI/FOMC/GDP); violent spread surge and slippage triggered stop-loss.",
             "lesson": "Keep out of XAUUSD ±30 minutes around high-impact economic news releases.",
         },
+        "ASIAN_SESSION_CHOP": {
+            "title": "Asian Session Low-Liquidity Trap",
+            "explanation": "Position entered between 21:00 and 07:00 UTC during Tokyo/Sydney Asian consolidation; spreads were wide and price lacked institutional directional volume.",
+            "lesson": "Do not trade Asian session (21:00 - 07:00 UTC); restrict entries strictly to high-volume London and NY Killzones.",
+        },
         "VOLATILITY_EXPANSION_SPIKE": {
             "title": "Volatility Expansion Spike",
             "explanation": "ATR expanded significantly above rolling baseline, causing noise to breach stop-loss before target was reached.",
@@ -130,9 +135,22 @@ class TradeForensicsEngine:
             except Exception:
                 pass
 
+        # Check Asian Session entry
+        is_asian = False
+        if entry_ts > 0:
+            try:
+                scale = 1000.0 if entry_ts > 1e11 else 1.0
+                dt_entry = datetime.fromtimestamp(entry_ts / scale, tz=timezone.utc)
+                if dt_entry.hour >= 21 or dt_entry.hour < 7:
+                    is_asian = True
+            except Exception:
+                pass
+
         # Attribution hierarchy
         if is_news_blackout:
             cause = "NEWS_RELEASE_WHIPSAW"
+        elif is_asian:
+            cause = "ASIAN_SESSION_CHOP"
         elif direction == "BUY" and ("Bearish" in regime or "Ranging" in regime):
             cause = "REGIME_OPPOSITION"
         elif direction == "SELL" and ("Bullish" in regime or "Ranging" in regime):

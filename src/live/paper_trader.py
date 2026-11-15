@@ -85,6 +85,7 @@ class PaperTradingEngine:
         only_killzones: bool = False,
         filter_high_impact_news: bool = True,
         news_blackout_mins: int = 30,
+        exclude_asian_session: bool = False,
     ):
         self.initial_balance = initial_balance
         self.spread_usd = spread_usd
@@ -99,6 +100,7 @@ class PaperTradingEngine:
         self.only_killzones = only_killzones
         self.filter_high_impact_news = filter_high_impact_news
         self.news_blackout_mins = news_blackout_mins
+        self.exclude_asian_session = exclude_asian_session
 
         self.balance: float = initial_balance
         self.equity: float = initial_balance
@@ -251,9 +253,17 @@ class PaperTradingEngine:
 
         # 2. Check for new order entry if flat and prediction is actionable
         if self.open_position is None and prediction is not None and prediction.direction in ["BUY", "SELL"]:
+            # Strict Asian session filter (Never trade 21:00 - 07:00 UTC)
+            if self.exclude_asian_session:
+                dt_utc = pd.to_datetime(ts // 1000 if ts > 10_000_000_000 else ts, unit="s", utc=True)
+                hr = dt_utc.hour
+                if hr >= 21 or hr < 7:
+                    self.last_candle_timestamp = ts
+                    return {"action": "WAIT", "message": "Filtered out: Asian Session Blackout (Do NOT trade 21:00 - 07:00 UTC)"}
+
             # Optional Killzone session filter
             if self.only_killzones:
-                dt = pd.to_datetime(ts // 1000 if ts > 10_000_000_000 else ts, unit="s")
+                dt = pd.to_datetime(ts // 1000 if ts > 10_000_000_000 else ts, unit="s", utc=True)
                 hr = dt.hour
                 in_kz = ((hr >= 7) and (hr <= 10)) or ((hr >= 12) and (hr <= 15))
                 if not in_kz:

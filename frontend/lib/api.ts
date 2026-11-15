@@ -373,6 +373,8 @@ export async function runBacktest(params: {
   learn_from_mistakes?: boolean;
   filter_high_impact_news?: boolean;
   news_blackout_mins?: number;
+  exclude_asian_session?: boolean;
+  use_full_history?: boolean;
   target_rr?: number;
 }): Promise<BacktestResponse> {
   const res = await fetch(`${API_BASE}/api/backtest/run`, {
@@ -402,6 +404,8 @@ export async function runBacktestComparison(params?: {
   learn_from_mistakes?: boolean;
   filter_high_impact_news?: boolean;
   news_blackout_mins?: number;
+  exclude_asian_session?: boolean;
+  use_full_history?: boolean;
   target_rr?: number;
 }): Promise<BacktestComparisonResponse> {
   const res = await fetch(`${API_BASE}/api/backtest/compare`, {

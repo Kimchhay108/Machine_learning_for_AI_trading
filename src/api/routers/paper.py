@@ -18,7 +18,11 @@ _paper_daemon: Optional[PaperTradingDaemon] = None
 def get_paper_engine() -> PaperTradingEngine:
     global _paper_engine
     if _paper_engine is None:
-        _paper_engine = PaperTradingEngine()
+        _paper_engine = PaperTradingEngine(
+            only_killzones=True,
+            filter_high_impact_news=True,
+            exclude_asian_session=True,
+        )
     return _paper_engine
 
 

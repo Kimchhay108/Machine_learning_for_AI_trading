@@ -53,6 +53,8 @@ export default function BacktestLab() {
   const [useH1Gatekeeper, setUseH1Gatekeeper] = useState(true);
   const [learnFromMistakes, setLearnFromMistakes] = useState(true);
   const [filterNews, setFilterNews] = useState(true);
+  const [excludeAsian, setExcludeAsian] = useState(true);
+  const [useFullHistory, setUseFullHistory] = useState(true);
   const [enablePartialTP, setEnablePartialTP] = useState(true);
   const [targetRR, setTargetRR] = useState<number | undefined>(undefined);
 
@@ -153,6 +155,8 @@ export default function BacktestLab() {
         learn_from_mistakes: learnFromMistakes,
         filter_high_impact_news: filterNews,
         news_blackout_mins: 30,
+        exclude_asian_session: excludeAsian,
+        use_full_history: useFullHistory,
         target_rr: targetRR,
       });
       setResults(res);
@@ -183,6 +187,8 @@ export default function BacktestLab() {
         learn_from_mistakes: learnFromMistakes,
         filter_high_impact_news: filterNews,
         news_blackout_mins: 30,
+        exclude_asian_session: excludeAsian,
+        use_full_history: useFullHistory,
         target_rr: targetRR,
       });
       setComparison(compRes);
@@ -417,6 +423,28 @@ export default function BacktestLab() {
             />
             <span className="font-semibold text-rose-400">📰 High-Impact News Blackout Filter</span>
             <span className="text-[10px] text-gray-400">(Keep out ±30m of NFP, CPI, FOMC, GDP)</span>
+          </label>
+
+          <label className="flex items-center space-x-2 text-gray-300 cursor-pointer select-none">
+            <input
+              type="checkbox"
+              checked={excludeAsian}
+              onChange={(e) => setExcludeAsian(e.target.checked)}
+              className="rounded bg-dark-800 border-dark-600 text-gold-500 focus:ring-0 w-3.5 h-3.5"
+            />
+            <span className="font-semibold text-red-400">🚫 Strict Asian Session Blackout</span>
+            <span className="text-[10px] text-gray-400">(Do NOT trade 21:00 - 07:00 UTC consolidation)</span>
+          </label>
+
+          <label className="flex items-center space-x-2 text-gray-300 cursor-pointer select-none">
+            <input
+              type="checkbox"
+              checked={useFullHistory}
+              onChange={(e) => setUseFullHistory(e.target.checked)}
+              className="rounded bg-dark-800 border-dark-600 text-gold-500 focus:ring-0 w-3.5 h-3.5"
+            />
+            <span className="font-semibold text-emerald-400">📅 Full 2023–Present Dataset</span>
+            <span className="text-[10px] text-gray-400">(All 274,619 M5 bars; uncheck for 30% OOS)</span>
           </label>
         </div>
 
