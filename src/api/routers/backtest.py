@@ -165,8 +165,9 @@ def generate_strategy_signals_and_levels(
             pb, pl = prob_b[i, 0], prob_b[i, 2]
             cp, ca = close[i], atr[i]
 
-            is_buy = in_killzones[i] and (not news_blackout[i]) and h1_bull[i] and mistake_ok_buy[i] and ((ict_bull[i] and pl > 0.40) or (pl >= threshold and pl > pb))
-            is_sell = in_killzones[i] and (not news_blackout[i]) and h1_bear[i] and mistake_ok_sell[i] and ((ict_bear[i] and pb > 0.40) or (pb >= threshold and pb > pl))
+            # Model B Strict Entry Condition: Must have active ICT Pattern + Model B confidence >= threshold
+            is_buy = in_killzones[i] and (not news_blackout[i]) and h1_bull[i] and mistake_ok_buy[i] and ict_bull[i] and (pl >= threshold and pl > pb)
+            is_sell = in_killzones[i] and (not news_blackout[i]) and h1_bear[i] and mistake_ok_sell[i] and ict_bear[i] and (pb >= threshold and pb > pl)
 
             if is_buy and not is_sell:
                 signals.append("BUY")
@@ -205,13 +206,18 @@ def generate_strategy_signals_and_levels(
         ema_align = test_df.get("ema_alignment", pd.Series(0, index=test_df.index)).to_numpy()
         rsi_os = test_df.get("rsi_14_oversold", pd.Series(0, index=test_df.index)).to_numpy()
         rsi_ob = test_df.get("rsi_14_overbought", pd.Series(0, index=test_df.index)).to_numpy()
+        rsi_arr = test_df.get("rsi_14", pd.Series(50.0, index=test_df.index)).to_numpy()
 
         for i in range(n):
             pb, pl = prob_a[i, 0], prob_a[i, 2]
             cp, ca = close[i], atr[i]
 
-            is_buy = in_killzones[i] and (not news_blackout[i]) and h1_bull[i] and mistake_ok_buy[i] and ((pl > 0.40 and pl > pb and (ema_align[i] >= 1 or rsi_os[i] == 1)) or (pl >= threshold and pl > pb))
-            is_sell = in_killzones[i] and (not news_blackout[i]) and h1_bear[i] and mistake_ok_sell[i] and ((pb > 0.40 and pb > pl and (ema_align[i] <= -1 or rsi_ob[i] == 1)) or (pb >= threshold and pb > pl))
+            # Model A Strict Entry Condition: Bullish EMA trend + healthy pullback confirmation
+            tech_bull = (ema_align[i] >= 1) and (rsi_os[i] == 1 or (rsi_arr[i] >= 35.0 and rsi_arr[i] <= 62.0))
+            tech_bear = (ema_align[i] <= -1) and (rsi_ob[i] == 1 or (rsi_arr[i] >= 38.0 and rsi_arr[i] <= 65.0))
+
+            is_buy = in_killzones[i] and (not news_blackout[i]) and h1_bull[i] and mistake_ok_buy[i] and tech_bull and (pl >= threshold and pl > pb)
+            is_sell = in_killzones[i] and (not news_blackout[i]) and h1_bear[i] and mistake_ok_sell[i] and tech_bear and (pb >= threshold and pb > pl)
 
             if is_buy and not is_sell:
                 signals.append("BUY")
@@ -248,8 +254,12 @@ def generate_strategy_signals_and_levels(
             pb, pl = prob_d[i, 0], prob_d[i, 2]
             cp, ca, ch, cl = close[i], atr[i], high[i], low[i]
 
-            is_buy = in_killzones[i] and (not news_blackout[i]) and h1_bull[i] and mistake_ok_buy[i] and ((pl > 0.40 and pl > pb and (pin_bull[i] == 1 or engulf_bull[i] == 1 or lower_wick[i] >= 0.40)) or (pl >= threshold and pl > pb))
-            is_sell = in_killzones[i] and (not news_blackout[i]) and h1_bear[i] and mistake_ok_sell[i] and ((pb > 0.40 and pb > pl and (pin_bear[i] == 1 or engulf_bear[i] == 1 or upper_wick[i] >= 0.40)) or (pb >= threshold and pb > pl))
+            # Model D Strict Entry Condition: Candlestick Rejection Pin Bar or Engulfing wick pattern
+            pa_bull = (pin_bull[i] == 1) or (engulf_bull[i] == 1) or (lower_wick[i] >= 0.35)
+            pa_bear = (pin_bear[i] == 1) or (engulf_bear[i] == 1) or (upper_wick[i] >= 0.35)
+
+            is_buy = in_killzones[i] and (not news_blackout[i]) and h1_bull[i] and mistake_ok_buy[i] and pa_bull and (pl >= threshold and pl > pb)
+            is_sell = in_killzones[i] and (not news_blackout[i]) and h1_bear[i] and mistake_ok_sell[i] and pa_bear and (pb >= threshold and pb > pl)
 
             if is_buy and not is_sell:
                 signals.append("BUY")
@@ -285,12 +295,21 @@ def generate_strategy_signals_and_levels(
         engine.ensemble.confidence_threshold = threshold
         decisions, probs, confs = engine.ensemble.predict_decision(test_df)
 
+        # Check sub-model consensus: at least 2 sub-models must agree on direction
+        pred_a = engine.ensemble.model_a.predict(test_df)
+        pred_b = engine.ensemble.model_b.predict(test_df)
+        pred_d = engine.ensemble.model_d.predict(test_df)
+
+        agreed_bull = ((pred_a == 2).astype(int) + (pred_b == 2).astype(int) + (pred_d == 2).astype(int)) >= 2
+        agreed_bear = ((pred_a == 0).astype(int) + (pred_b == 0).astype(int) + (pred_d == 0).astype(int)) >= 2
+
         for i in range(n):
             cp, ca = close[i], atr[i]
             sig = decisions[i]
 
-            is_buy = in_killzones[i] and (not news_blackout[i]) and h1_bull[i] and mistake_ok_buy[i] and (sig == "BUY")
-            is_sell = in_killzones[i] and (not news_blackout[i]) and h1_bear[i] and mistake_ok_sell[i] and (sig == "SELL")
+            # Model E Strict Entry Condition: Calibrated Ensemble threshold + multi-model majority consensus
+            is_buy = in_killzones[i] and (not news_blackout[i]) and h1_bull[i] and mistake_ok_buy[i] and (sig == "BUY") and agreed_bull[i]
+            is_sell = in_killzones[i] and (not news_blackout[i]) and h1_bear[i] and mistake_ok_sell[i] and (sig == "SELL") and agreed_bear[i]
 
             if is_buy and not is_sell:
                 signals.append("BUY")

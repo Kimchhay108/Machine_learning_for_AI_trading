@@ -155,6 +155,13 @@ class PredictionEngine:
         # 1. Model E (Ensemble) Setup
         agreed_bull = sum(1 for v in [sub_tech, sub_smc, sub_pa] if v == 2)
         agreed_bear = sum(1 for v in [sub_tech, sub_smc, sub_pa] if v == 0)
+
+        # Strict Model E Condition: Requires Calibrated threshold AND multi-model agreement (>=2 sub-models)
+        if decision == "BUY" and agreed_bull < 2:
+            decision = "WAIT"
+        elif decision == "SELL" and agreed_bear < 2:
+            decision = "WAIT"
+
         if decision == "BUY":
             why_e = (
                 f"Stacked meta-calibrator triggers BUY with {round(conf * 100, 1)}% confidence, "
@@ -169,10 +176,10 @@ class PredictionEngine:
             )
         else:
             why_e = (
-                f"Ensemble advises WAIT: directional confidence ({round(conf * 100, 1)}%) is below the {round(self.ensemble.confidence_threshold * 100, 1)}% selective threshold. "
-                f"Sub-models are in mixed alignment (Tech: {'BULL' if sub_tech==2 else ('BEAR' if sub_tech==0 else 'NEUT')}, "
+                f"Ensemble advises WAIT: directional confidence ({round(conf * 100, 1)}%) or multi-model agreement ({agreed_bull if decision=='BUY' else agreed_bear}/3) "
+                f"did not meet strict entry confluence (Tech: {'BULL' if sub_tech==2 else ('BEAR' if sub_tech==0 else 'NEUT')}, "
                 f"SMC: {'BULL' if sub_smc==2 else ('BEAR' if sub_smc==0 else 'NEUT')}, "
-                f"PA: {'BULL' if sub_pa==2 else ('BEAR' if sub_pa==0 else 'NEUT')}). Preserving capital until confluence aligns."
+                f"PA: {'BULL' if sub_pa==2 else ('BEAR' if sub_pa==0 else 'NEUT')}). Preserving capital until all conditions align."
             )
 
         setup_ensemble = {
@@ -201,7 +208,7 @@ class PredictionEngine:
             latest_row.get("ict_turtle_soup_bearish", pd.Series([0])).iloc[0] == 1
         )
         p_b_bear, p_b_bull = float(smc_prob[0]), float(smc_prob[2])
-        if (has_ict_bull and p_b_bull > 0.35) or (p_b_bull >= 0.45 and p_b_bull > p_b_bear):
+        if has_ict_bull and (p_b_bull >= 0.40 and p_b_bull > p_b_bear):
             dir_b = "BUY"
             sl_b = round((swing_l - 0.50) if (swing_l > 0 and 0.50 <= (entry_price - swing_l) <= 4.0 * atr) else (entry_price - 1.5 * atr), 2)
             risk_b = max(entry_price - sl_b, 0.50)
@@ -213,7 +220,7 @@ class PredictionEngine:
                 f"Price in {dealing_pos} zone. Structural Swing Invalidation SL set at ${sl_b} (-$0.50 buffer under ${swing_l:.2f}), "
                 f"targeting opposing buy-side liquidity pool at ${tp_b} (2.5 R:R)."
             )
-        elif (has_ict_bear and p_b_bear > 0.35) or (p_b_bear >= 0.45 and p_b_bear > p_b_bull):
+        elif has_ict_bear and (p_b_bear >= 0.40 and p_b_bear > p_b_bull):
             dir_b = "SELL"
             sl_b = round((swing_h + 0.50) if (swing_h > 0 and 0.50 <= (swing_h - entry_price) <= 4.0 * atr) else (entry_price + 1.5 * atr), 2)
             risk_b = max(sl_b - entry_price, 0.50)
@@ -251,7 +258,9 @@ class PredictionEngine:
 
         # 3. Model A (Technical Momentum - Indicators) Setup
         p_a_bear, p_a_bull = float(tech_prob[0]), float(tech_prob[2])
-        if p_a_bull >= 0.45 and p_a_bull > p_a_bear:
+        has_tech_bull = (ema_align >= 1) and (latest_row.get("rsi_14_oversold", pd.Series([0])).iloc[0] == 1 or (rsi_val >= 35.0 and rsi_val <= 62.0))
+        has_tech_bear = (ema_align <= -1) and (latest_row.get("rsi_14_overbought", pd.Series([0])).iloc[0] == 1 or (rsi_val >= 38.0 and rsi_val <= 65.0))
+        if has_tech_bull and p_a_bull >= 0.40 and p_a_bull > p_a_bear:
             dir_a = "BUY"
             sl_a = round(entry_price - 1.5 * atr, 2)
             tp_a = round(entry_price + 3.0 * atr, 2)
@@ -261,7 +270,7 @@ class PredictionEngine:
                 f"RSI(14) at {rsi_val} in healthy pullback expansion, MACD hist at {macd_h}. "
                 f"Volatility envelope SL at ${sl_a} (1.5x ATR buffer: ${round(1.5*atr, 2)}), TP at ${tp_a} (2.0 R:R)."
             )
-        elif p_a_bear >= 0.45 and p_a_bear > p_a_bull:
+        elif has_tech_bear and p_a_bear >= 0.40 and p_a_bear > p_a_bull:
             dir_a = "SELL"
             sl_a = round(entry_price + 1.5 * atr, 2)
             tp_a = round(entry_price - 3.0 * atr, 2)
@@ -277,7 +286,7 @@ class PredictionEngine:
             tp_a = round(entry_price + 3.0 * atr, 2)
             conf_a = round(max(p_a_bull, p_a_bear) * 100, 1)
             why_a = (
-                f"Model A is in WAIT: Technical indicators neutral (RSI: {rsi_val}, MACD hist: {macd_h}, EMA alignment: {ema_align}). "
+                f"Model A is in WAIT: Technical indicator conditions not met (RSI: {rsi_val}, MACD hist: {macd_h}, EMA alignment: {ema_align}). "
                 f"Awaiting clear pullback or momentum expansion."
             )
 
@@ -299,7 +308,10 @@ class PredictionEngine:
         p_d_bear, p_d_bull = float(pa_prob[0]), float(pa_prob[2])
         upper_wick = c_high - max(entry_price, float(latest_row.get("open", pd.Series([entry_price])).iloc[0]))
         lower_wick = min(entry_price, float(latest_row.get("open", pd.Series([entry_price])).iloc[0])) - c_low
-        if p_d_bull >= 0.45 and p_d_bull > p_d_bear:
+        has_pa_bull = (latest_row.get("pin_bar_bullish", pd.Series([0])).iloc[0] == 1 or latest_row.get("engulfing_bullish", pd.Series([0])).iloc[0] == 1 or float(latest_row.get("lower_wick_ratio", pd.Series([0.0])).iloc[0]) >= 0.35)
+        has_pa_bear = (latest_row.get("pin_bar_bearish", pd.Series([0])).iloc[0] == 1 or latest_row.get("engulfing_bearish", pd.Series([0])).iloc[0] == 1 or float(latest_row.get("upper_wick_ratio", pd.Series([0.0])).iloc[0]) >= 0.35)
+
+        if has_pa_bull and p_d_bull >= 0.40 and p_d_bull > p_d_bear:
             dir_d = "BUY"
             sl_d = round((c_low - 0.50) if 0.40 <= (entry_price - c_low) <= 3.0 * atr else (entry_price - 1.2 * atr), 2)
             risk_d = max(entry_price - sl_d, 0.40)
@@ -309,7 +321,7 @@ class PredictionEngine:
                 f"Model D triggers BUY ({conf_d}% prob): Candlestick displays lower wick rejection (${lower_wick:.2f}) absorbing sellers off low ${c_low:.2f}. "
                 f"Tight wick SL at ${sl_d} (-$0.50 buffer), TP at ${tp_d} (2.0 R:R)."
             )
-        elif p_d_bear >= 0.45 and p_d_bear > p_d_bull:
+        elif has_pa_bear and p_d_bear >= 0.40 and p_d_bear > p_d_bull:
             dir_d = "SELL"
             sl_d = round((c_high + 0.50) if 0.40 <= (c_high - entry_price) <= 3.0 * atr else (entry_price + 1.2 * atr), 2)
             risk_d = max(sl_d - entry_price, 0.40)
