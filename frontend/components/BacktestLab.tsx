@@ -52,16 +52,8 @@ export default function BacktestLab() {
   const [slippage, setSlippage] = useState(0.05);
   const [riskPct, setRiskPct] = useState(0.01);
   const [threshold, setThreshold] = useState(0.60);
-  const [maxBars, setMaxBars] = useState(24);
-  const [enableBreakeven, setEnableBreakeven] = useState(false);
-  const [onlyKillzones, setOnlyKillzones] = useState(true);
-  const [learnFromMistakes, setLearnFromMistakes] = useState(true);
-  const [filterNews, setFilterNews] = useState(true);
-  const [excludeAsian, setExcludeAsian] = useState(true);
-  const [useH1Gatekeeper, setUseH1Gatekeeper] = useState(true);
-  const [useFullHistory, setUseFullHistory] = useState(true);
-  const [strictStructuralEntry, setStrictStructuralEntry] = useState(true);
-  const [targetRR, setTargetRR] = useState<number | undefined>(1.5);
+  const [maxBars, setMaxBars] = useState(36);
+  const [targetRR, setTargetRR] = useState<number | undefined>(1.2);
 
   // Chart ref
   const chartContainerRef = useRef<HTMLDivElement>(null);
@@ -160,19 +152,19 @@ export default function BacktestLab() {
         risk_per_trade: Number(riskPct),
         threshold: Number(threshold),
         max_holding_bars: Number(maxBars),
-        enable_breakeven: enableBreakeven,
+        enable_breakeven: false,
         breakeven_r: 1.0,
         enable_partial_tp: false,
         partial_tp_r: 1.0,
-        only_killzones: onlyKillzones,
-        use_h1_gatekeeper: useH1Gatekeeper,
-        learn_from_mistakes: learnFromMistakes,
-        filter_high_impact_news: filterNews,
+        only_killzones: true,
+        use_h1_gatekeeper: true,
+        learn_from_mistakes: true,
+        filter_high_impact_news: true,
         news_blackout_mins: 30,
-        exclude_asian_session: excludeAsian,
-        use_full_history: useFullHistory,
-        strict_structural_entry: strictStructuralEntry,
-        target_rr: targetRR,
+        exclude_asian_session: true,
+        use_full_history: true,
+        strict_structural_entry: true,
+        target_rr: targetRR || 1.2,
         post_loss_cooldown_bars: 3,
       });
       setResults(res);
@@ -195,19 +187,19 @@ export default function BacktestLab() {
         risk_per_trade: Number(riskPct),
         threshold: Number(threshold),
         max_holding_bars: Number(maxBars),
-        enable_breakeven: enableBreakeven,
+        enable_breakeven: false,
         breakeven_r: 1.0,
         enable_partial_tp: false,
         partial_tp_r: 1.0,
-        only_killzones: onlyKillzones,
-        use_h1_gatekeeper: useH1Gatekeeper,
-        learn_from_mistakes: learnFromMistakes,
-        filter_high_impact_news: filterNews,
+        only_killzones: true,
+        use_h1_gatekeeper: true,
+        learn_from_mistakes: true,
+        filter_high_impact_news: true,
         news_blackout_mins: 30,
-        exclude_asian_session: excludeAsian,
-        use_full_history: useFullHistory,
-        strict_structural_entry: strictStructuralEntry,
-        target_rr: targetRR,
+        exclude_asian_session: true,
+        use_full_history: true,
+        strict_structural_entry: true,
+        target_rr: targetRR || 1.2,
         post_loss_cooldown_bars: 3,
       });
       setComparison(compRes);
@@ -402,108 +394,42 @@ export default function BacktestLab() {
           <div>
             <label className="text-gray-400 block mb-1">Target R:R Mode</label>
             <select
-              value={targetRR === undefined ? '' : targetRR}
-              onChange={(e) => setTargetRR(e.target.value ? Number(e.target.value) : undefined)}
+              value={targetRR === undefined ? 1.2 : targetRR}
+              onChange={(e) => setTargetRR(e.target.value ? Number(e.target.value) : 1.2)}
               className="w-full bg-dark-800 border border-dark-700 rounded px-2.5 py-1.5 text-white font-medium"
             >
-              <option value="">Native Default</option>
-              <option value={1.2}>1:1.2 (High-WR Scalp)</option>
-              <option value={1.5}>1:1.5 (Recommended for 2026 Volatility)</option>
-              <option value={2.0}>1:2.0 (Standard Target)</option>
-              <option value={2.5}>1:2.5 (ICT Runner)</option>
+              <option value={1.2}>1:1.2 (High Win-Rate Target - Recommended)</option>
+              <option value={1.5}>1:1.5 (Standard Target)</option>
+              <option value={2.0}>1:2.0 (Swing Runner)</option>
             </select>
           </div>
         </div>
 
-        {/* High Win-Rate & Institutional Toggles */}
-        <div className="flex flex-wrap items-center gap-5 mt-3 pt-3 border-t border-dark-800/80 text-xs">
-          <label className="flex items-center space-x-2 text-gray-300 cursor-pointer select-none">
-            <input
-              type="checkbox"
-              checked={enableBreakeven}
-              onChange={(e) => setEnableBreakeven(e.target.checked)}
-              className="rounded bg-dark-800 border-dark-600 text-gold-500 focus:ring-0 w-3.5 h-3.5"
-            />
-            <span className="font-semibold text-emerald-400">🛡️ Move SL to Breakeven at +1.0R</span>
-            <span className="text-[10px] text-gray-400">(Default OFF: Unchecked maximizes winrate & lets +2.5R runners hit TP)</span>
-          </label>
-
-          <label className="flex items-center space-x-2 text-gray-300 cursor-pointer select-none">
-            <input
-              type="checkbox"
-              checked={onlyKillzones}
-              onChange={(e) => setOnlyKillzones(e.target.checked)}
-              className="rounded bg-dark-800 border-dark-600 text-gold-500 focus:ring-0 w-3.5 h-3.5"
-            />
-            <span className="font-semibold text-gold-400">⚡ London & NY Killzones Only</span>
-            <span className="text-[10px] text-gray-400">(07-10 & 12-15 UTC)</span>
-          </label>
-
-          <label className="flex items-center space-x-2 text-gray-300 cursor-pointer select-none">
-            <input
-              type="checkbox"
-              checked={learnFromMistakes}
-              onChange={(e) => setLearnFromMistakes(e.target.checked)}
-              className="rounded bg-dark-800 border-dark-600 text-gold-500 focus:ring-0 w-3.5 h-3.5"
-            />
-            <span className="font-semibold text-amber-400">🧠 AI Failure Memory & Mistake Filter</span>
-            <span className="text-[10px] text-gray-400">(Vetoes loss patterns: Chop, Spikes, Exhaustion)</span>
-          </label>
-
-          <label className="flex items-center space-x-2 text-gray-300 cursor-pointer select-none">
-            <input
-              type="checkbox"
-              checked={filterNews}
-              onChange={(e) => setFilterNews(e.target.checked)}
-              className="rounded bg-dark-800 border-dark-600 text-gold-500 focus:ring-0 w-3.5 h-3.5"
-            />
-            <span className="font-semibold text-rose-400">📰 High-Impact News Blackout Filter</span>
-            <span className="text-[10px] text-gray-400">(Keep out ±30m of NFP, CPI, FOMC, GDP)</span>
-          </label>
-
-          <label className="flex items-center space-x-2 text-gray-300 cursor-pointer select-none">
-            <input
-              type="checkbox"
-              checked={useH1Gatekeeper}
-              onChange={(e) => setUseH1Gatekeeper(e.target.checked)}
-              className="rounded bg-dark-800 border-dark-600 text-gold-500 focus:ring-0 w-3.5 h-3.5"
-            />
-            <span className="font-semibold text-blue-400">🛡️ H1 Macro Trend Gatekeeper</span>
-            <span className="text-[10px] text-gray-400">(Filters counter-trend traps with H1 200 EMA)</span>
-          </label>
-
-          <label className="flex items-center space-x-2 text-gray-300 cursor-pointer select-none">
-            <input
-              type="checkbox"
-              checked={excludeAsian}
-              onChange={(e) => setExcludeAsian(e.target.checked)}
-              className="rounded bg-dark-800 border-dark-600 text-gold-500 focus:ring-0 w-3.5 h-3.5"
-            />
-            <span className="font-semibold text-red-400">🚫 Strict Asian Session Blackout</span>
-            <span className="text-[10px] text-gray-400">(Do NOT trade 21:00 - 07:00 UTC consolidation)</span>
-          </label>
-
-          <label className="flex items-center space-x-2 text-gray-300 cursor-pointer select-none">
-            <input
-              type="checkbox"
-              checked={useFullHistory}
-              onChange={(e) => setUseFullHistory(e.target.checked)}
-              className="rounded bg-dark-800 border-dark-600 text-gold-500 focus:ring-0 w-3.5 h-3.5"
-            />
-            <span className="font-semibold text-emerald-400">📅 Full 2023–Present Dataset</span>
-            <span className="text-[10px] text-gray-400">(All 274,619 M5 bars; uncheck for 30% OOS)</span>
-          </label>
-
-          <label className="flex items-center space-x-2 text-gray-300 cursor-pointer select-none">
-            <input
-              type="checkbox"
-              checked={strictStructuralEntry}
-              onChange={(e) => setStrictStructuralEntry(e.target.checked)}
-              className="rounded bg-dark-800 border-dark-600 text-gold-500 focus:ring-0 w-3.5 h-3.5"
-            />
-            <span className="font-semibold text-cyan-400">🎯 Strict Structural Pattern Confluence</span>
-            <span className="text-[10px] text-gray-400">(Uncheck to trade purely on raw AI probability without pattern gates)</span>
-          </label>
+        {/* Built-In Institutional Safeguards Banner (Active by Default) */}
+        <div className="flex flex-wrap items-center gap-3 mt-3 pt-3 border-t border-dark-800/80 text-[11px] text-gray-300">
+          <div className="flex items-center space-x-1.5 bg-dark-800/60 border border-dark-700/60 rounded px-2.5 py-1 text-emerald-400">
+            <Shield className="w-3.5 h-3.5 text-emerald-400" />
+            <span className="font-semibold">Triple-Trend Alignment Active</span>
+            <span className="text-gray-400">(H1 200 EMA + M5 EMA 50/200)</span>
+          </div>
+          <div className="flex items-center space-x-1.5 bg-dark-800/60 border border-dark-700/60 rounded px-2.5 py-1 text-gold-400">
+            <Zap className="w-3.5 h-3.5 text-gold-400" />
+            <span className="font-semibold">Killzones Only</span>
+            <span className="text-gray-400">(London & NY)</span>
+          </div>
+          <div className="flex items-center space-x-1.5 bg-dark-800/60 border border-dark-700/60 rounded px-2.5 py-1 text-rose-400">
+            <AlertTriangle className="w-3.5 h-3.5 text-rose-400" />
+            <span className="font-semibold">News Blackout</span>
+            <span className="text-gray-400">(±30m NFP/CPI/FOMC)</span>
+          </div>
+          <div className="flex items-center space-x-1.5 bg-dark-800/60 border border-dark-700/60 rounded px-2.5 py-1 text-red-400">
+            <span className="font-semibold">Asian Blackout</span>
+            <span className="text-gray-400">(21:00-07:00 UTC)</span>
+          </div>
+          <div className="flex items-center space-x-1.5 bg-dark-800/60 border border-dark-700/60 rounded px-2.5 py-1 text-amber-400">
+            <Brain className="w-3.5 h-3.5 text-amber-400" />
+            <span className="font-semibold">Failure Memory</span>
+          </div>
         </div>
 
         {/* Action Buttons */}

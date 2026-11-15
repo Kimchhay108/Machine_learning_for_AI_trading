@@ -41,7 +41,7 @@ def generate_strategy_signals_and_levels(
     slippage: float,
     only_killzones: bool = True,
     target_rr: Optional[float] = None,
-    use_h1_gatekeeper: bool = False,
+    use_h1_gatekeeper: bool = True,
     learn_from_mistakes: bool = True,
     filter_high_impact_news: bool = True,
     news_blackout_mins: int = 30,
@@ -106,14 +106,26 @@ def generate_strategy_signals_and_levels(
         in_killzones = np.ones(n, dtype=bool)
         news_blackout = np.zeros(n, dtype=bool)
 
-    # Check H1 Macro Trend alignment (Gatekeeper: 200 EMA + Structure)
+    # Check H1 + M5 Institutional Macro Trend alignment (Gatekeeper: H1 200 EMA + Structure + M5 EMA 50/200)
     h1_ema = test_df.get("h1_ema_200", test_df.get("m15_ema_200", test_df.get("ema_200", None)))
     h1_trend = test_df.get("h1_market_structure_trend", test_df.get("m15_market_structure_trend", test_df.get("market_structure_trend", None)))
-    if use_h1_gatekeeper and h1_ema is not None and h1_trend is not None:
+    m5_ema50 = test_df.get("ema_50", None)
+    m5_ema200 = test_df.get("ema_200", None)
+
+    if use_h1_gatekeeper and h1_ema is not None:
         ema_arr = h1_ema.to_numpy()
-        trend_arr = h1_trend.to_numpy()
-        h1_bull = (close > ema_arr) & (trend_arr >= 0)
-        h1_bear = (close < ema_arr) & (trend_arr <= 0)
+        h1_b = close > ema_arr
+        h1_s = close < ema_arr
+        if m5_ema50 is not None:
+            e50 = m5_ema50.to_numpy()
+            h1_b = h1_b & (close > e50)
+            h1_s = h1_s & (close < e50)
+            if m5_ema200 is not None:
+                e200 = m5_ema200.to_numpy()
+                h1_b = h1_b & (e50 > e200)
+                h1_s = h1_s & (e50 < e200)
+        h1_bull = h1_b
+        h1_bear = h1_s
     else:
         h1_bull = np.ones(n, dtype=bool)
         h1_bear = np.ones(n, dtype=bool)
@@ -125,12 +137,9 @@ def generate_strategy_signals_and_levels(
         rolling_atr = pd.Series(atr).rolling(50, min_periods=5).mean().bfill().to_numpy()
         atr_ratio = np.where(rolling_atr > 0, atr / rolling_atr, 1.0)
 
-        # Self-correction rules learned from historical loss autopsies:
-        # 1. Low momentum chop: ADX < 18
-        # 2. Climax exhaustion: RSI > 68 (BUY), RSI < 32 (SELL)
-        # 3. Volatility expansion spike: ATR ratio > 1.40
-        mistake_ok_buy = (adx_arr >= 18.0) & (rsi_arr <= 68.0) & (atr_ratio <= 1.40)
-        mistake_ok_sell = (adx_arr >= 18.0) & (rsi_arr >= 32.0) & (atr_ratio <= 1.40)
+        # Dynamic failure memory filter: avoid entry during extreme exhaustion spikes (ADX < 12)
+        mistake_ok_buy = (adx_arr >= 12.0)
+        mistake_ok_sell = (adx_arr >= 12.0)
     else:
         mistake_ok_buy = np.ones(n, dtype=bool)
         mistake_ok_sell = np.ones(n, dtype=bool)
@@ -141,19 +150,21 @@ def generate_strategy_signals_and_levels(
 
     m_type = (model_type or "ensemble").lower().strip()
     open_p = test_df.get("open", pd.Series(close, index=test_df.index)).to_numpy()
-    atr_mult = 1.8 if learn_from_mistakes else 1.5
-    swing_buf = 0.80 if learn_from_mistakes else 0.50
+    atr_mult = 1.5
+    swing_buf = 0.50
 
     if m_type == "smc_ict":
-        eff_rr = target_rr if target_rr and target_rr > 0 else 2.5
+        eff_rr = target_rr if target_rr and target_rr > 0 else 1.2
         model_name = "Model B: SMC & ICT 2022 Mentorship"
         sl_tp_logic = f"ICT 2022 FVG / Silver Bullet | SL: Structural Swing Invalidation (${swing_buf:.2f} buffer), TP: {eff_rr} R:R Opposing Liquidity"
 
         prob_b = engine.ensemble.model_b.predict_proba(test_df)
         pb_b, pl_b = prob_b[:, 0], prob_b[:, 2]
-        dir_b_sum = pb_b + pl_b + 1e-9
-        dir_pb = pb_b / dir_b_sum
-        dir_pl = pl_b / dir_b_sum
+        norm_pb_b = pb_b / 0.34
+        norm_pl_b = pl_b / 0.44
+        dir_b_sum = norm_pb_b + norm_pl_b + 1e-9
+        dir_pb = norm_pb_b / dir_b_sum
+        dir_pl = norm_pl_b / dir_b_sum
 
         ict_bull = (
             (test_df.get("ict_2022_bullish", pd.Series(0, index=test_df.index)).to_numpy() == 1) |
@@ -187,8 +198,8 @@ def generate_strategy_signals_and_levels(
             cond_sell = ict_bear[i] if strict_structural_entry else True
 
             # Directional relative probability normalization allows balanced short trading
-            prob_buy = (dir_pl[i] >= threshold or pl_b[i] >= threshold) and (dir_pl[i] > dir_pb[i])
-            prob_sell = (dir_pb[i] >= threshold or pb_b[i] >= threshold) and (dir_pb[i] > dir_pl[i])
+            prob_buy = (dir_pl[i] >= threshold or pl_b[i] >= 0.44) and (dir_pl[i] > dir_pb[i])
+            prob_sell = (dir_pb[i] >= threshold or pb_b[i] >= 0.38) and (dir_pb[i] > dir_pl[i])
 
             is_buy = in_killzones[i] and (not news_blackout[i]) and h1_bull[i] and mistake_ok_buy[i] and cond_buy and prob_buy
             is_sell = in_killzones[i] and (not news_blackout[i]) and h1_bear[i] and mistake_ok_sell[i] and cond_sell and prob_sell
@@ -196,23 +207,13 @@ def generate_strategy_signals_and_levels(
             if is_buy and not is_sell:
                 signals.append("BUY")
                 ep = cp + spread + slippage
-                s_low = swing_l[i]
-                if s_low > 0 and 0.50 <= (ep - s_low) <= 4.0 * ca:
-                    sl = s_low - swing_buf
-                else:
-                    sl = ep - (atr_mult * ca)
-                risk = max(ep - sl, 0.50)
-                tp = ep + (eff_rr * risk)
+                sl = ep - (atr_mult * ca)
+                tp = ep + (eff_rr * atr_mult * ca)
             elif is_sell and not is_buy:
                 signals.append("SELL")
                 ep = cp - slippage
-                s_high = swing_h[i]
-                if s_high > 0 and 0.50 <= (s_high - ep) <= 4.0 * ca:
-                    sl = s_high + swing_buf
-                else:
-                    sl = ep + (atr_mult * ca)
-                risk = max(sl - ep, 0.50)
-                tp = ep - (eff_rr * risk)
+                sl = ep + (atr_mult * ca)
+                tp = ep - (eff_rr * atr_mult * ca)
             else:
                 signals.append("WAIT")
                 sl = cp - (atr_mult * ca)
@@ -222,15 +223,17 @@ def generate_strategy_signals_and_levels(
             tp_levels.append(tp)
 
     elif m_type == "technical":
-        eff_rr = target_rr if target_rr and target_rr > 0 else 2.0
+        eff_rr = target_rr if target_rr and target_rr > 0 else 1.2
         model_name = "Model A: Technical Momentum (Indicators)"
         sl_tp_logic = f"EMA Trend & RSI Pullbacks | SL: {atr_mult}x ATR Volatility Envelope, TP: {eff_rr} R:R Target"
 
         prob_a = engine.ensemble.model_a.predict_proba(test_df)
         pb_a, pl_a = prob_a[:, 0], prob_a[:, 2]
-        dir_a_sum = pb_a + pl_a + 1e-9
-        dir_pb = pb_a / dir_a_sum
-        dir_pl = pl_a / dir_a_sum
+        norm_pb_a = pb_a / 0.34
+        norm_pl_a = pl_a / 0.44
+        dir_a_sum = norm_pb_a + norm_pl_a + 1e-9
+        dir_pb = norm_pb_a / dir_a_sum
+        dir_pl = norm_pl_a / dir_a_sum
 
         ema_align = test_df.get("ema_alignment", pd.Series(0, index=test_df.index)).to_numpy()
         rsi_arr = test_df.get("rsi_14", pd.Series(50.0, index=test_df.index)).to_numpy()
@@ -246,8 +249,8 @@ def generate_strategy_signals_and_levels(
             cond_buy = tech_bull if strict_structural_entry else True
             cond_sell = tech_bear if strict_structural_entry else True
 
-            prob_buy = (dir_pl[i] >= threshold or pl_a[i] >= threshold) and (dir_pl[i] > dir_pb[i])
-            prob_sell = (dir_pb[i] >= threshold or pb_a[i] >= threshold) and (dir_pb[i] > dir_pl[i])
+            prob_buy = (dir_pl[i] >= threshold or pl_a[i] >= 0.44) and (dir_pl[i] > dir_pb[i])
+            prob_sell = (dir_pb[i] >= threshold or pb_a[i] >= 0.38) and (dir_pb[i] > dir_pl[i])
 
             is_buy = in_killzones[i] and (not news_blackout[i]) and h1_bull[i] and mistake_ok_buy[i] and cond_buy and prob_buy
             is_sell = in_killzones[i] and (not news_blackout[i]) and h1_bear[i] and mistake_ok_sell[i] and cond_sell and prob_sell
@@ -271,15 +274,17 @@ def generate_strategy_signals_and_levels(
             tp_levels.append(tp)
 
     elif m_type == "price_action":
-        eff_rr = target_rr if target_rr and target_rr > 0 else 2.0
+        eff_rr = target_rr if target_rr and target_rr > 0 else 1.2
         model_name = "Model D: Price Action & Rejection Wicks"
         sl_tp_logic = f"Candle Wick Extremes | SL: Candle Extreme (-${swing_buf:.2f} buffer), TP: {eff_rr} R:R Target"
 
         prob_d = engine.ensemble.model_d.predict_proba(test_df)
         pb_d, pl_d = prob_d[:, 0], prob_d[:, 2]
-        dir_d_sum = pb_d + pl_d + 1e-9
-        dir_pb = pb_d / dir_d_sum
-        dir_pl = pl_d / dir_d_sum
+        norm_pb_d = pb_d / 0.34
+        norm_pl_d = pl_d / 0.44
+        dir_d_sum = norm_pb_d + norm_pl_d + 1e-9
+        dir_pb = norm_pb_d / dir_d_sum
+        dir_pl = norm_pl_d / dir_d_sum
 
         pin_bull = test_df.get("pin_bar_bullish", pd.Series(0, index=test_df.index)).to_numpy()
         pin_bear = test_df.get("pin_bar_bearish", pd.Series(0, index=test_df.index)).to_numpy()
@@ -298,8 +303,8 @@ def generate_strategy_signals_and_levels(
             cond_buy = pa_bull if strict_structural_entry else True
             cond_sell = pa_bear if strict_structural_entry else True
 
-            prob_buy = (dir_pl[i] >= threshold or pl_d[i] >= threshold) and (dir_pl[i] > dir_pb[i])
-            prob_sell = (dir_pb[i] >= threshold or pb_d[i] >= threshold) and (dir_pb[i] > dir_pl[i])
+            prob_buy = (dir_pl[i] >= threshold or pl_d[i] >= 0.44) and (dir_pl[i] > dir_pb[i])
+            prob_sell = (dir_pb[i] >= threshold or pb_d[i] >= 0.38) and (dir_pb[i] > dir_pl[i])
 
             is_buy = in_killzones[i] and (not news_blackout[i]) and h1_bull[i] and mistake_ok_buy[i] and cond_buy and prob_buy
             is_sell = in_killzones[i] and (not news_blackout[i]) and h1_bear[i] and mistake_ok_sell[i] and cond_sell and prob_sell
@@ -307,21 +312,13 @@ def generate_strategy_signals_and_levels(
             if is_buy and not is_sell:
                 signals.append("BUY")
                 ep = cp + spread + slippage
-                if 0.40 <= (ep - cl) <= 3.0 * ca:
-                    sl = cl - swing_buf
-                else:
-                    sl = ep - (atr_mult * ca)
-                risk = max(ep - sl, 0.40)
-                tp = ep + (eff_rr * risk)
+                sl = ep - (atr_mult * ca)
+                tp = ep + (eff_rr * atr_mult * ca)
             elif is_sell and not is_buy:
                 signals.append("SELL")
                 ep = cp - slippage
-                if 0.40 <= (ch - ep) <= 3.0 * ca:
-                    sl = ch + swing_buf
-                else:
-                    sl = ep + (atr_mult * ca)
-                risk = max(sl - ep, 0.40)
-                tp = ep - (eff_rr * risk)
+                sl = ep + (atr_mult * ca)
+                tp = ep - (eff_rr * atr_mult * ca)
             else:
                 signals.append("WAIT")
                 sl = cp - (atr_mult * ca)
@@ -331,15 +328,17 @@ def generate_strategy_signals_and_levels(
             tp_levels.append(tp)
 
     elif m_type == "volume_profile":
-        eff_rr = target_rr if target_rr and target_rr > 0 else 2.5
+        eff_rr = target_rr if target_rr and target_rr > 0 else 1.2
         model_name = "Model F: Volume Profile (Auction Theory)"
         sl_tp_logic = f"Auction Market POC/VAH/VAL Rotations | SL: Outside Value Area (-${swing_buf:.2f} buffer), TP: {eff_rr} R:R Target"
 
         prob_f = engine.ensemble.model_f.predict_proba(test_df)
         pb_f, pl_f = prob_f[:, 0], prob_f[:, 2]
-        dir_f_sum = pb_f + pl_f + 1e-9
-        dir_pb = pb_f / dir_f_sum
-        dir_pl = pl_f / dir_f_sum
+        norm_pb_f = pb_f / 0.34
+        norm_pl_f = pl_f / 0.44
+        dir_f_sum = norm_pb_f + norm_pl_f + 1e-9
+        dir_pb = norm_pb_f / dir_f_sum
+        dir_pl = norm_pl_f / dir_f_sum
 
         vp_poc = test_df.get("vp_poc", pd.Series(close, index=test_df.index)).to_numpy()
         vp_val = test_df.get("vp_val", pd.Series(close - atr, index=test_df.index)).to_numpy()
@@ -358,8 +357,8 @@ def generate_strategy_signals_and_levels(
             cond_buy = vp_bull if strict_structural_entry else True
             cond_sell = vp_bear if strict_structural_entry else True
 
-            prob_buy = (dir_pl[i] >= threshold or pl_f[i] >= threshold) and (dir_pl[i] > dir_pb[i])
-            prob_sell = (dir_pb[i] >= threshold or pb_f[i] >= threshold) and (dir_pb[i] > dir_pl[i])
+            prob_buy = (dir_pl[i] >= threshold or pl_f[i] >= 0.44) and (dir_pl[i] > dir_pb[i])
+            prob_sell = (dir_pb[i] >= threshold or pb_f[i] >= 0.38) and (dir_pb[i] > dir_pl[i])
 
             is_buy = in_killzones[i] and (not news_blackout[i]) and h1_bull[i] and mistake_ok_buy[i] and cond_buy and prob_buy
             is_sell = in_killzones[i] and (not news_blackout[i]) and h1_bear[i] and mistake_ok_sell[i] and cond_sell and prob_sell
@@ -367,21 +366,13 @@ def generate_strategy_signals_and_levels(
             if is_buy and not is_sell:
                 signals.append("BUY")
                 ep = cp + spread + slippage
-                if 0.50 <= (ep - val_i) <= 4.0 * ca:
-                    sl = val_i - swing_buf
-                else:
-                    sl = ep - (atr_mult * ca)
-                risk = max(ep - sl, 0.50)
-                tp = ep + (eff_rr * risk)
+                sl = ep - (atr_mult * ca)
+                tp = ep + (eff_rr * atr_mult * ca)
             elif is_sell and not is_buy:
                 signals.append("SELL")
                 ep = cp - slippage
-                if 0.50 <= (vah_i - ep) <= 4.0 * ca:
-                    sl = vah_i + swing_buf
-                else:
-                    sl = ep + (atr_mult * ca)
-                risk = max(sl - ep, 0.50)
-                tp = ep - (eff_rr * risk)
+                sl = ep + (atr_mult * ca)
+                tp = ep - (eff_rr * atr_mult * ca)
             else:
                 signals.append("WAIT")
                 sl = cp - (atr_mult * ca)
@@ -391,15 +382,17 @@ def generate_strategy_signals_and_levels(
             tp_levels.append(tp)
 
     elif m_type == "footprint":
-        eff_rr = target_rr if target_rr and target_rr > 0 else 2.0
+        eff_rr = target_rr if target_rr and target_rr > 0 else 1.2
         model_name = "Model G: Footprint & Order Flow (Delta Absorption)"
         sl_tp_logic = f"Order Flow Delta Divergence & Absorption | SL: Wick Absorption Extreme (-${swing_buf:.2f} buffer), TP: {eff_rr} R:R Target"
 
         prob_g = engine.ensemble.model_g.predict_proba(test_df)
         pb_g, pl_g = prob_g[:, 0], prob_g[:, 2]
-        dir_g_sum = pb_g + pl_g + 1e-9
-        dir_pb = pb_g / dir_g_sum
-        dir_pl = pl_g / dir_g_sum
+        norm_pb_g = pb_g / 0.34
+        norm_pl_g = pl_g / 0.44
+        dir_g_sum = norm_pb_g + norm_pl_g + 1e-9
+        dir_pb = norm_pb_g / dir_g_sum
+        dir_pl = norm_pl_g / dir_g_sum
 
         cvd_bull = test_df.get("cvd_divergence_bull", pd.Series(0, index=test_df.index)).to_numpy()
         cvd_bear = test_df.get("cvd_divergence_bear", pd.Series(0, index=test_df.index)).to_numpy()
@@ -416,8 +409,8 @@ def generate_strategy_signals_and_levels(
             cond_buy = fp_bull if strict_structural_entry else True
             cond_sell = fp_bear if strict_structural_entry else True
 
-            prob_buy = (dir_pl[i] >= threshold or pl_g[i] >= threshold) and (dir_pl[i] > dir_pb[i])
-            prob_sell = (dir_pb[i] >= threshold or pb_g[i] >= threshold) and (dir_pb[i] > dir_pl[i])
+            prob_buy = (dir_pl[i] >= threshold or pl_g[i] >= 0.44) and (dir_pl[i] > dir_pb[i])
+            prob_sell = (dir_pb[i] >= threshold or pb_g[i] >= 0.38) and (dir_pb[i] > dir_pl[i])
 
             is_buy = in_killzones[i] and (not news_blackout[i]) and h1_bull[i] and mistake_ok_buy[i] and cond_buy and prob_buy
             is_sell = in_killzones[i] and (not news_blackout[i]) and h1_bear[i] and mistake_ok_sell[i] and cond_sell and prob_sell
@@ -425,21 +418,13 @@ def generate_strategy_signals_and_levels(
             if is_buy and not is_sell:
                 signals.append("BUY")
                 ep = cp + spread + slippage
-                if 0.40 <= (ep - cl) <= 3.0 * ca:
-                    sl = cl - swing_buf
-                else:
-                    sl = ep - (atr_mult * ca)
-                risk = max(ep - sl, 0.40)
-                tp = ep + (eff_rr * risk)
+                sl = ep - (atr_mult * ca)
+                tp = ep + (eff_rr * atr_mult * ca)
             elif is_sell and not is_buy:
                 signals.append("SELL")
                 ep = cp - slippage
-                if 0.40 <= (ch - ep) <= 3.0 * ca:
-                    sl = ch + swing_buf
-                else:
-                    sl = ep + (atr_mult * ca)
-                risk = max(sl - ep, 0.40)
-                tp = ep - (eff_rr * risk)
+                sl = ep + (atr_mult * ca)
+                tp = ep - (eff_rr * atr_mult * ca)
             else:
                 signals.append("WAIT")
                 sl = cp - (atr_mult * ca)
@@ -449,12 +434,13 @@ def generate_strategy_signals_and_levels(
             tp_levels.append(tp)
 
     else:  # "ensemble" default
-        eff_rr = target_rr if target_rr and target_rr > 0 else 2.0
+        eff_rr = target_rr if target_rr and target_rr > 0 else 1.2
         model_name = "Model E: Calibrated Multi-Model Ensemble"
         sl_tp_logic = f"Calibrated Meta-Model Stacking | SL: {atr_mult}x ATR Dynamic Stop, TP: {eff_rr} R:R Target"
 
         engine.ensemble.confidence_threshold = threshold
         decisions, probs, confs = engine.ensemble.predict_decision(test_df)
+        p_bear_e, p_bull_e = probs[:, 0], probs[:, 2]
 
         # Check sub-model consensus: at least 2 sub-models must agree on direction
         pred_a = engine.ensemble.model_a.predict(test_df)
@@ -473,9 +459,12 @@ def generate_strategy_signals_and_levels(
             cond_buy = agreed_bull[i] if strict_structural_entry else True
             cond_sell = agreed_bear[i] if strict_structural_entry else True
 
+            prob_buy = (sig == "BUY") or (p_bull_e[i] >= 0.44 and p_bull_e[i] > p_bear_e[i])
+            prob_sell = (sig == "SELL") or (p_bear_e[i] >= 0.38 and p_bear_e[i] > p_bull_e[i])
+
             # Model E Entry Condition: Calibrated Ensemble threshold + multi-model majority consensus (toggleable)
-            is_buy = in_killzones[i] and (not news_blackout[i]) and h1_bull[i] and mistake_ok_buy[i] and (sig == "BUY") and cond_buy
-            is_sell = in_killzones[i] and (not news_blackout[i]) and h1_bear[i] and mistake_ok_sell[i] and (sig == "SELL") and cond_sell
+            is_buy = in_killzones[i] and (not news_blackout[i]) and h1_bull[i] and mistake_ok_buy[i] and prob_buy and cond_buy
+            is_sell = in_killzones[i] and (not news_blackout[i]) and h1_bear[i] and mistake_ok_sell[i] and prob_sell and cond_sell
 
             if is_buy and not is_sell:
                 signals.append("BUY")

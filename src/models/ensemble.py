@@ -142,10 +142,12 @@ class EnsemblePredictionModel:
         p_neut = probs[:, 1]
         p_bull = probs[:, 2]
 
-        # Directional relative probability normalization (removes neutral drift bias)
-        dir_sum = p_bull + p_bear + 1e-9
-        dir_p_bull = p_bull / dir_sum
-        dir_p_bear = p_bear / dir_sum
+        # Base-rate normalization to remove structural upward drift bias (p_bull base ~0.44, p_bear base ~0.34)
+        norm_bull = p_bull / 0.44
+        norm_bear = p_bear / 0.34
+        dir_sum = norm_bull + norm_bear + 1e-9
+        dir_p_bull = norm_bull / dir_sum
+        dir_p_bear = norm_bear / dir_sum
         dir_confidence = np.maximum(dir_p_bull, dir_p_bear)
 
         decisions = []
@@ -154,7 +156,7 @@ class EnsemblePredictionModel:
             is_confident = (dir_confidence[i] >= self.confidence_threshold) or (max(p_bull[i], p_bear[i]) >= self.confidence_threshold)
             if not is_confident:
                 decisions.append("WAIT")
-            elif p_bull[i] > p_bear[i]:
+            elif norm_bull[i] > norm_bear[i]:
                 decisions.append("BUY")
             else:
                 decisions.append("SELL")

@@ -93,13 +93,15 @@ class TestAPIEndpoints:
         assert "active_version" in data
         assert len(data["models"]) >= 1
         versions = [m["version"] for m in data["models"]]
-        assert "v1.0.0" in versions
+        assert data["active_version"] in versions
 
     def test_get_performance(self, client: TestClient):
-        res = client.get("/api/ai/performance?instrument=XAUUSD&version=v1.0.0")
+        models_res = client.get("/api/ai/models")
+        active_ver = models_res.json()["active_version"]
+        res = client.get(f"/api/ai/performance?instrument=XAUUSD&version={active_ver}")
         assert res.status_code == 200
         data = res.json()
-        assert data["model_version"] == "v1.0.0"
+        assert data["model_version"] == active_ver
         assert 0.0 <= data["directional_accuracy"] <= 1.0
         assert 0.0 <= data["selective_accuracy"] <= 1.0
         assert 0.0 <= data["coverage_pct"] <= 100.0
@@ -156,7 +158,6 @@ class TestAPIEndpoints:
         backup_bytes = cached_file.read_bytes() if cached_file.exists() else None
         try:
             req = {
-                "version": "v1.0.0",
                 "initial_capital": 10000.0,
                 "spread": 0.20,
                 "slippage": 0.05,
@@ -188,7 +189,6 @@ class TestAPIEndpoints:
         try:
             for m_type in ["smc_ict", "technical", "price_action"]:
                 req = {
-                    "version": "v1.0.0",
                     "model_type": m_type,
                     "initial_capital": 10000.0,
                     "threshold": 0.50,
@@ -205,7 +205,7 @@ class TestAPIEndpoints:
 
     def test_backtest_compare(self, client: TestClient):
         """Verify comparative backtesting endpoint runs all models side-by-side."""
-        res = client.post("/api/backtest/compare", json={"version": "v1.0.0", "threshold": 0.50})
+        res = client.post("/api/backtest/compare", json={"threshold": 0.50})
         assert res.status_code == 200
         data = res.json()
         assert "results" in data

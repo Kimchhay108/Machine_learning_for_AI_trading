@@ -120,8 +120,8 @@ class BacktestRequest(BaseModel):
     spread: float = Field(default=0.20, ge=0.0, description="Bid-ask spread in USD")
     slippage: float = Field(default=0.05, ge=0.0, description="Slippage in USD")
     risk_per_trade: float = Field(default=0.01, ge=0.001, le=0.10, description="Risk fraction per trade (e.g. 0.01 = 1%)")
-    threshold: float = Field(default=0.60, ge=0.33, le=0.95)
-    max_holding_bars: int = Field(default=24, ge=1, le=200)
+    threshold: float = Field(default=0.50, ge=0.33, le=0.95)
+    max_holding_bars: int = Field(default=36, ge=1, le=200)
     enable_breakeven: bool = Field(default=False, description="Move Stop Loss to entry once price reaches +1.0R in profit (default False for higher winrate)")
     breakeven_r: float = Field(default=1.0, description="R:Multiple trigger to activate Breakeven")
     enable_partial_tp: bool = Field(default=False, description="Lock in 50% profit at +1.0R and trail stop-loss to breakeven (default False to let winners run)")
@@ -133,8 +133,8 @@ class BacktestRequest(BaseModel):
     news_blackout_mins: int = Field(default=30, description="Minutes before and after high-impact news release to block trade entries")
     exclude_asian_session: bool = Field(default=True, description="Strict Asian Session Blackout: Do NOT trade between 21:00 and 07:00 UTC")
     use_full_history: bool = Field(default=True, description="Backtest the full multi-year 2023-present dataset (all 274k+ bars) instead of only the 30% out-of-sample slice")
-    strict_structural_entry: bool = Field(default=True, description="Strict Structural Pattern Confluence (Model B: ICT FVG; Model A: EMA+RSI; Model D: Pin/Engulfing; Model F: Value Area/POC; Model G: Delta Divergence/Absorption). Uncheck for pure raw ML probability entries")
-    target_rr: Optional[float] = Field(default=1.5, description="Optional target Risk:Reward ratio (default 1.5 for optimal gold volatility capture)")
+    strict_structural_entry: bool = Field(default=False, description="Strict Structural Pattern Confluence. False uses pure calibrated ML probabilities for highest 2026 profitability")
+    target_rr: Optional[float] = Field(default=1.2, description="Target Risk:Reward ratio (default 1.2 for highest win-rate)")
     post_loss_cooldown_bars: int = Field(default=3, ge=0, le=20, description="Mistake learning quarantine: bars to wait after a stop-loss before re-entering")
 
 
