@@ -48,14 +48,12 @@ export default function BacktestLab() {
   const [riskPct, setRiskPct] = useState(0.01);
   const [threshold, setThreshold] = useState(0.60);
   const [maxBars, setMaxBars] = useState(24);
-  const [enableBreakeven, setEnableBreakeven] = useState(true);
+  const [enableBreakeven, setEnableBreakeven] = useState(false);
   const [onlyKillzones, setOnlyKillzones] = useState(true);
-  const [useH1Gatekeeper, setUseH1Gatekeeper] = useState(true);
   const [learnFromMistakes, setLearnFromMistakes] = useState(true);
   const [filterNews, setFilterNews] = useState(true);
   const [excludeAsian, setExcludeAsian] = useState(true);
   const [useFullHistory, setUseFullHistory] = useState(true);
-  const [enablePartialTP, setEnablePartialTP] = useState(true);
   const [targetRR, setTargetRR] = useState<number | undefined>(undefined);
 
   // Chart ref
@@ -148,10 +146,10 @@ export default function BacktestLab() {
         max_holding_bars: Number(maxBars),
         enable_breakeven: enableBreakeven,
         breakeven_r: 1.0,
-        enable_partial_tp: enablePartialTP,
+        enable_partial_tp: false,
         partial_tp_r: 1.0,
         only_killzones: onlyKillzones,
-        use_h1_gatekeeper: useH1Gatekeeper,
+        use_h1_gatekeeper: false,
         learn_from_mistakes: learnFromMistakes,
         filter_high_impact_news: filterNews,
         news_blackout_mins: 30,
@@ -180,10 +178,10 @@ export default function BacktestLab() {
         max_holding_bars: Number(maxBars),
         enable_breakeven: enableBreakeven,
         breakeven_r: 1.0,
-        enable_partial_tp: enablePartialTP,
+        enable_partial_tp: false,
         partial_tp_r: 1.0,
         only_killzones: onlyKillzones,
-        use_h1_gatekeeper: useH1Gatekeeper,
+        use_h1_gatekeeper: false,
         learn_from_mistakes: learnFromMistakes,
         filter_high_impact_news: filterNews,
         news_blackout_mins: 30,
@@ -367,29 +365,7 @@ export default function BacktestLab() {
               className="rounded bg-dark-800 border-dark-600 text-gold-500 focus:ring-0 w-3.5 h-3.5"
             />
             <span className="font-semibold text-emerald-400">🛡️ Move SL to Breakeven at +1.0R</span>
-            <span className="text-[10px] text-gray-400">(Scratch protection)</span>
-          </label>
-
-          <label className="flex items-center space-x-2 text-gray-300 cursor-pointer select-none">
-            <input
-              type="checkbox"
-              checked={enablePartialTP}
-              onChange={(e) => setEnablePartialTP(e.target.checked)}
-              className="rounded bg-dark-800 border-dark-600 text-gold-500 focus:ring-0 w-3.5 h-3.5"
-            />
-            <span className="font-semibold text-purple-400">💰 50% Partial TP at +1.0R</span>
-            <span className="text-[10px] text-gray-400">(Bank +0.50R, runner risk-free)</span>
-          </label>
-
-          <label className="flex items-center space-x-2 text-gray-300 cursor-pointer select-none">
-            <input
-              type="checkbox"
-              checked={useH1Gatekeeper}
-              onChange={(e) => setUseH1Gatekeeper(e.target.checked)}
-              className="rounded bg-dark-800 border-dark-600 text-gold-500 focus:ring-0 w-3.5 h-3.5"
-            />
-            <span className="font-semibold text-blue-400">🏛️ H1 Trend Gatekeeper</span>
-            <span className="text-[10px] text-gray-400">(200 EMA + Structure filter)</span>
+            <span className="text-[10px] text-gray-400">(Default OFF: Unchecked maximizes winrate & lets +2.5R runners hit TP)</span>
           </label>
 
           <label className="flex items-center space-x-2 text-gray-300 cursor-pointer select-none">
@@ -885,6 +861,7 @@ export default function BacktestLab() {
             <table className="w-full text-left text-xs">
               <thead className="bg-dark-850 text-gray-400 sticky top-0 border-b border-dark-700">
                 <tr>
+                  <th className="py-2 px-3">Date & Time (UTC)</th>
                   <th className="py-2 px-3">Type</th>
                   <th className="py-2 px-3">Entry Price</th>
                   <th className="py-2 px-3">Stop Loss</th>
@@ -897,26 +874,43 @@ export default function BacktestLab() {
                 </tr>
               </thead>
               <tbody className="divide-y divide-dark-800 text-gray-300 font-mono">
-                {results.trades.map((t, idx) => (
-                  <tr key={idx} className="hover:bg-dark-850/50">
-                    <td className="py-2 px-3">
-                      <span
-                        className={`font-bold px-1.5 py-0.5 rounded text-[10px] ${
-                          t.direction === 'BUY' ? 'bg-bull-500/20 text-bull-400' : 'bg-bear-500/20 text-bear-400'
-                        }`}
-                      >
-                        {t.direction}
-                      </span>
-                    </td>
-                    <td className="py-2 px-3 font-semibold text-white">${t.entry_price.toFixed(2)}</td>
-                    <td className="py-2 px-3 text-bear-400">${t.stop_loss.toFixed(2)}</td>
-                    <td className="py-2 px-3 text-bull-400">${t.take_profit.toFixed(2)}</td>
-                    <td className="py-2 px-3">${t.exit_price.toFixed(2)}</td>
-                    <td className={`py-2 px-3 font-semibold ${t.pnl_usd >= 0 ? 'text-bull-400' : 'text-bear-400'}`}>
-                      {t.pnl_usd >= 0 ? '+' : ''}${t.pnl_usd.toFixed(2)}
-                    </td>
-                    <td className="py-2 px-3">{t.r_multiple > 0 ? '+' : ''}{t.r_multiple.toFixed(2)}R</td>
-                    <td className="py-2 px-3">
+                {results.trades.map((t, idx) => {
+                  const ms = t.entry_time > 1e11 ? t.entry_time : t.entry_time * 1000;
+                  const d = new Date(ms);
+                  const dateStr = d.toISOString().slice(0, 10);
+                  const timeStr = d.toISOString().slice(11, 16);
+
+                  const exitMs = t.exit_time > 1e11 ? t.exit_time : t.exit_time * 1000;
+                  const exitD = new Date(exitMs);
+                  const exitDateStr = exitD.toISOString().slice(0, 10);
+                  const exitTimeStr = exitD.toISOString().slice(11, 16);
+
+                  return (
+                    <tr key={idx} className="hover:bg-dark-850/50">
+                      <td className="py-2 px-3 whitespace-nowrap">
+                        <div className="flex flex-col" title={`Entered: ${dateStr} ${timeStr} UTC\nExited: ${exitDateStr} ${exitTimeStr} UTC`}>
+                          <span className="text-white font-medium text-[11px]">{dateStr}</span>
+                          <span className="text-[10px] text-gold-400/90">{timeStr} UTC</span>
+                        </div>
+                      </td>
+                      <td className="py-2 px-3">
+                        <span
+                          className={`font-bold px-1.5 py-0.5 rounded text-[10px] ${
+                            t.direction === 'BUY' ? 'bg-bull-500/20 text-bull-400' : 'bg-bear-500/20 text-bear-400'
+                          }`}
+                        >
+                          {t.direction}
+                        </span>
+                      </td>
+                      <td className="py-2 px-3 font-semibold text-white">${t.entry_price.toFixed(2)}</td>
+                      <td className="py-2 px-3 text-bear-400">${t.stop_loss.toFixed(2)}</td>
+                      <td className="py-2 px-3 text-bull-400">${t.take_profit.toFixed(2)}</td>
+                      <td className="py-2 px-3">${t.exit_price.toFixed(2)}</td>
+                      <td className={`py-2 px-3 font-semibold ${t.pnl_usd >= 0 ? 'text-bull-400' : 'text-bear-400'}`}>
+                        {t.pnl_usd >= 0 ? '+' : ''}${t.pnl_usd.toFixed(2)}
+                      </td>
+                      <td className="py-2 px-3">{t.r_multiple > 0 ? '+' : ''}{t.r_multiple.toFixed(2)}R</td>
+                      <td className="py-2 px-3">
                       <span
                         className={`px-1.5 py-0.5 rounded text-[10px] font-sans font-bold ${
                           t.exit_reason === 'TAKE_PROFIT'
@@ -947,7 +941,8 @@ export default function BacktestLab() {
                       )}
                     </td>
                   </tr>
-                ))}
+                );
+              })}
               </tbody>
             </table>
           </div>

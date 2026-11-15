@@ -299,6 +299,7 @@ export default function PaperTradingView() {
             <table className="w-full text-left text-xs">
               <thead className="bg-dark-850 text-gray-400 sticky top-0 border-b border-dark-700">
                 <tr>
+                  <th className="py-2 px-3">Date & Time (UTC)</th>
                   <th className="py-2 px-3">Type</th>
                   <th className="py-2 px-3">Entry Price</th>
                   <th className="py-2 px-3">Exit Price</th>
@@ -309,29 +310,47 @@ export default function PaperTradingView() {
                 </tr>
               </thead>
               <tbody className="divide-y divide-dark-800 text-gray-300 font-mono">
-                {trades.map((t, idx) => (
-                  <tr key={idx} className="hover:bg-dark-850/50">
-                    <td className="py-2 px-3">
-                      <span
-                        className={`font-bold px-1.5 py-0.5 rounded text-[10px] ${
-                          t.direction === 'BUY' ? 'bg-bull-500/20 text-bull-400' : 'bg-bear-500/20 text-bear-400'
-                        }`}
-                      >
-                        {t.direction}
-                      </span>
-                    </td>
-                    <td className="py-2 px-3">${t.entry_price.toFixed(2)}</td>
-                    <td className="py-2 px-3">${t.exit_price.toFixed(2)}</td>
-                    <td className="py-2 px-3">{t.size_oz}</td>
-                    <td className={`py-2 px-3 font-semibold ${t.pnl_usd >= 0 ? 'text-bull-400' : 'text-bear-400'}`}>
-                      {t.pnl_usd >= 0 ? '+' : ''}${t.pnl_usd.toFixed(2)}
-                    </td>
-                    <td className="py-2 px-3">{t.r_multiple > 0 ? '+' : ''}{t.r_multiple.toFixed(2)}R</td>
-                    <td className="py-2 px-3">
-                      <span className="text-gray-400 text-[11px] font-sans">{t.exit_reason}</span>
-                    </td>
-                  </tr>
-                ))}
+                {trades.map((t, idx) => {
+                  const ms = t.entry_time > 1e11 ? t.entry_time : t.entry_time * 1000;
+                  const d = new Date(ms);
+                  const dateStr = d.toISOString().slice(0, 10);
+                  const timeStr = d.toISOString().slice(11, 16);
+
+                  const exitMs = t.exit_time > 1e11 ? t.exit_time : t.exit_time * 1000;
+                  const exitD = new Date(exitMs);
+                  const exitDateStr = exitD.toISOString().slice(0, 10);
+                  const exitTimeStr = exitD.toISOString().slice(11, 16);
+
+                  return (
+                    <tr key={idx} className="hover:bg-dark-850/50">
+                      <td className="py-2 px-3 whitespace-nowrap">
+                        <div className="flex flex-col" title={`Entered: ${dateStr} ${timeStr} UTC\nExited: ${exitDateStr} ${exitTimeStr} UTC`}>
+                          <span className="text-white font-medium text-[11px]">{dateStr}</span>
+                          <span className="text-[10px] text-gold-400/90">{timeStr} UTC</span>
+                        </div>
+                      </td>
+                      <td className="py-2 px-3">
+                        <span
+                          className={`font-bold px-1.5 py-0.5 rounded text-[10px] ${
+                            t.direction === 'BUY' ? 'bg-bull-500/20 text-bull-400' : 'bg-bear-500/20 text-bear-400'
+                          }`}
+                        >
+                          {t.direction}
+                        </span>
+                      </td>
+                      <td className="py-2 px-3">${t.entry_price.toFixed(2)}</td>
+                      <td className="py-2 px-3">${t.exit_price.toFixed(2)}</td>
+                      <td className="py-2 px-3">{t.size_oz}</td>
+                      <td className={`py-2 px-3 font-semibold ${t.pnl_usd >= 0 ? 'text-bull-400' : 'text-bear-400'}`}>
+                        {t.pnl_usd >= 0 ? '+' : ''}${t.pnl_usd.toFixed(2)}
+                      </td>
+                      <td className="py-2 px-3">{t.r_multiple > 0 ? '+' : ''}{t.r_multiple.toFixed(2)}R</td>
+                      <td className="py-2 px-3">
+                        <span className="text-gray-400 text-[11px] font-sans">{t.exit_reason}</span>
+                      </td>
+                    </tr>
+                  );
+                })}
               </tbody>
             </table>
           </div>

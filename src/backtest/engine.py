@@ -73,9 +73,9 @@ class RealisticBacktestEngine:
         spread_usd: float = 0.20,             # 20 cents Gold spread
         slippage_usd: float = 0.05,           # 5 cents execution slippage
         max_holding_bars: int = 24,           # 2 hours on M5
-        enable_breakeven: bool = True,        # Move SL to entry once in profit (+1.0R)
+        enable_breakeven: bool = False,       # Move SL to entry once in profit (+1.0R) - default False for higher winrate & full runners
         breakeven_r: float = 1.0,             # Target R:Multiple to trigger Breakeven
-        enable_partial_tp: bool = True,       # Scale out 50% position size at +1.0R
+        enable_partial_tp: bool = False,      # Scale out 50% position size at +1.0R - default False to avoid cutting winning trades early
         partial_tp_r: float = 1.0,            # Target R:Multiple to take 50% partial profit
         partial_tp_ratio: float = 0.50,       # Fraction of position to scale out
     ):
