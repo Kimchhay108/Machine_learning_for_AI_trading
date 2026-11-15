@@ -50,7 +50,7 @@ class PredictionEngine:
         self,
         ensemble: EnsemblePredictionModel,
         model_version: str = "v1.0.0",
-        default_rr_ratio: float = 2.0,
+        default_rr_ratio: float = 1.2,
         sl_atr_multiplier: float = 1.5,
     ):
         self.ensemble = ensemble
@@ -171,13 +171,13 @@ class PredictionEngine:
             why_e = (
                 f"Stacked meta-calibrator triggers BUY with {round(conf * 100, 1)}% directional confidence, "
                 f"clearing the {round(self.ensemble.confidence_threshold * 100, 1)}% execution filter. "
-                f"{agreed_bull}/5 sub-models agree on Bullish upside. Dynamic ATR Stop Loss at ${stop_loss} with 2.0 R:R Target at ${take_profit}."
+                f"{agreed_bull}/5 sub-models agree on Bullish upside. Dynamic ATR Stop Loss at ${stop_loss} with {self.default_rr_ratio} R:R Target at ${take_profit}."
             )
         elif decision == "SELL":
             why_e = (
                 f"Stacked meta-calibrator triggers SELL with {round(conf * 100, 1)}% directional confidence, "
                 f"clearing the {round(self.ensemble.confidence_threshold * 100, 1)}% execution filter. "
-                f"{agreed_bear}/5 sub-models agree on Bearish downside. Dynamic ATR Stop Loss at ${stop_loss} with 2.0 R:R Target at ${take_profit}."
+                f"{agreed_bear}/5 sub-models agree on Bearish downside. Dynamic ATR Stop Loss at ${stop_loss} with {self.default_rr_ratio} R:R Target at ${take_profit}."
             )
         else:
             why_e = (

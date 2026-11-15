@@ -80,7 +80,7 @@ export default function AIAnalysisCard({ prediction, loading }: AIAnalysisCardPr
       why_explanation:
         direction === 'WAIT'
           ? `Ensemble recommends WAIT: confidence (${(confidence * 100).toFixed(1)}%) is below selective threshold. Preserving capital until sub-models reach confluence.`
-          : `Multi-model stacked consensus triggers ${direction} with ${(confidence * 100).toFixed(1)}% confidence. Dynamic ATR Stop Loss at $${(stop_loss_reference || 0).toFixed(2)} with 2.0 R:R Target at $${(take_profit_reference || 0).toFixed(2)}.`,
+          : `Multi-model stacked consensus triggers ${direction} with ${(confidence * 100).toFixed(1)}% confidence. Dynamic ATR Stop Loss at $${(stop_loss_reference || 0).toFixed(2)} with ${(risk_reward_ratio || 1.2).toFixed(1)} R:R Target at $${(take_profit_reference || 0).toFixed(2)}.`,
       key_drivers: ['Meta-Model Stacking', `Confidence: ${(confidence * 100).toFixed(1)}%`, `Regime: ${market_regime}`],
     },
     {

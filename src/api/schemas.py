@@ -139,7 +139,7 @@ class BacktestRequest(BaseModel):
     use_full_history: bool = Field(default=True, description="Backtest the full multi-year 2023-present dataset (all 274k+ bars) instead of only the 30% out-of-sample slice")
     strict_structural_entry: bool = Field(default=False, description="Strict Structural Pattern Confluence. False uses pure calibrated ML probabilities for highest 2026 profitability")
     target_rr: Optional[float] = Field(default=1.2, description="Target Risk:Reward ratio (default 1.2 for highest win-rate)")
-    post_loss_cooldown_bars: int = Field(default=3, ge=0, le=20, description="Mistake learning quarantine: bars to wait after a stop-loss before re-entering")
+    post_loss_cooldown_bars: int = Field(default=6, ge=0, le=20, description="Mistake learning quarantine: bars to wait after a stop-loss before re-entering (6 bars = 30 min)")
 
 
 class NewsEventItemSchema(BaseModel):

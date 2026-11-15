@@ -220,7 +220,7 @@ export default function BacktestLab() {
       title: 'Model E: Calibrated Multi-Model Ensemble',
       entry: 'Meta-calibrator stacked consensus of Technical, SMC, and Price Action submodels (P ≥ 50%)',
       sl: 'Dynamic Volatility Stop: 1.5x ATR buffer from execution fill',
-      tp: 'Volatility Target: 3.0x ATR buffer (2.0 Risk:Reward ratio)',
+      tp: `Volatility Target: 1.8x ATR buffer (${targetRR || 1.2} Risk:Reward ratio)`,
       badge: 'bg-indigo-500/20 text-indigo-300 border-indigo-500/30',
     },
     smc_ict: {
