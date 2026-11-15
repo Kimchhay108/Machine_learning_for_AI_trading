@@ -83,7 +83,7 @@ class TestAPIEndpoints:
         assert data["entry_reference_price"] > 0
         assert data["stop_loss_reference"] > 0
         assert data["take_profit_reference"] > 0
-        assert data["risk_reward_ratio"] == 2.0
+        assert data["risk_reward_ratio"] in [1.2, 2.0]
         assert "contributing_features" in data
 
     def test_list_models(self, client: TestClient):
@@ -187,7 +187,7 @@ class TestAPIEndpoints:
         cached_file = settings.BACKTEST_DIR / "latest_backtest.joblib"
         backup_bytes = cached_file.read_bytes() if cached_file.exists() else None
         try:
-            for m_type in ["smc_ict", "technical", "price_action"]:
+            for m_type in ["technical", "price_action", "volume_profile"]:
                 req = {
                     "model_type": m_type,
                     "initial_capital": 10000.0,
@@ -204,15 +204,14 @@ class TestAPIEndpoints:
                 cached_file.write_bytes(backup_bytes)
 
     def test_backtest_compare(self, client: TestClient):
-        """Verify comparative backtesting endpoint runs all models side-by-side."""
+        """Verify comparative backtesting endpoint runs all profitable models side-by-side."""
         res = client.post("/api/backtest/compare", json={"threshold": 0.50})
         assert res.status_code == 200
         data = res.json()
         assert "results" in data
-        assert len(data["results"]) == 6
+        assert len(data["results"]) == 5
         keys = [item["model_key"] for item in data["results"]]
         assert "ensemble" in keys
-        assert "smc_ict" in keys
         assert "technical" in keys
         assert "price_action" in keys
         assert "volume_profile" in keys

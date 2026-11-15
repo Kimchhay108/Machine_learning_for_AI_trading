@@ -218,17 +218,10 @@ export default function BacktestLab() {
   const strategyDetails: Record<string, { title: string; entry: string; sl: string; tp: string; badge: string }> = {
     ensemble: {
       title: 'Model E: Calibrated Multi-Model Ensemble',
-      entry: 'Meta-calibrator stacked consensus of Technical, SMC, and Price Action submodels (P ≥ 50%)',
+      entry: 'Meta-calibrator stacked consensus of Technical (A), Price Action (D), Volume Profile (F), and Footprint (G) submodels',
       sl: 'Dynamic Volatility Stop: 1.5x ATR buffer from execution fill',
       tp: `Volatility Target: 1.8x ATR buffer (${targetRR || 1.2} Risk:Reward ratio)`,
       badge: 'bg-indigo-500/20 text-indigo-300 border-indigo-500/30',
-    },
-    smc_ict: {
-      title: 'Model B: Smart Money Concepts & ICT 2022 Mentorship',
-      entry: 'ICT 2022 Mentorship (FVG + Discount/Premium retest), Silver Bullet window, Judas Swing, or Model B agreement',
-      sl: 'Structural Invalidation: Active Swing Low -$0.50 (BUY) / Active Swing High +$0.50 (SELL)',
-      tp: 'Targeting Opposing Liquidity Pool: 2.5x Risk multiple (2.5 Risk:Reward ratio)',
-      badge: 'bg-gold-500/20 text-gold-300 border-gold-500/30',
     },
     technical: {
       title: 'Model A: Technical Momentum (Indicators)',
@@ -313,11 +306,10 @@ export default function BacktestLab() {
               }}
               className="w-full bg-dark-800 border border-dark-700 rounded px-2.5 py-1.5 text-white font-medium focus:border-gold-500 outline-none"
             >
-              <option value="ensemble">Model E: Calibrated Ensemble (Multi-Model)</option>
-              <option value="smc_ict">Model B: SMC & ICT 2022 Mentorship</option>
+              <option value="ensemble">Model E: Calibrated Ensemble (Multi-Model +211%)</option>
+              <option value="price_action">Model D: Price Action (Wick Extremes 51% WR)</option>
+              <option value="volume_profile">Model F: Volume Profile (Auction Theory 51.5% WR)</option>
               <option value="technical">Model A: Technical Momentum (Indicators)</option>
-              <option value="price_action">Model D: Price Action (Wick Extremes)</option>
-              <option value="volume_profile">Model F: Volume Profile (Auction Theory)</option>
               <option value="footprint">Model G: Footprint & Order Flow (Delta)</option>
             </select>
           </div>

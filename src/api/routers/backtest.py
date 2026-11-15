@@ -439,15 +439,14 @@ def generate_strategy_signals_and_levels(
         decisions, probs, confs = engine.ensemble.predict_decision(test_df)
         p_bear_e, p_bull_e = probs[:, 0], probs[:, 2]
 
-        # Check sub-model consensus: at least 2 sub-models must agree on direction
+        # Check sub-model consensus: at least 2 profitable sub-models must agree on direction (Models A, D, F, G)
         pred_a = engine.ensemble.model_a.predict(test_df)
-        pred_b = engine.ensemble.model_b.predict(test_df)
         pred_d = engine.ensemble.model_d.predict(test_df)
         pred_f = engine.ensemble.model_f.predict(test_df)
         pred_g = engine.ensemble.model_g.predict(test_df)
 
-        agreed_bull = ((pred_a == 2).astype(int) + (pred_b == 2).astype(int) + (pred_d == 2).astype(int) + (pred_f == 2).astype(int) + (pred_g == 2).astype(int)) >= 2
-        agreed_bear = ((pred_a == 0).astype(int) + (pred_b == 0).astype(int) + (pred_d == 0).astype(int) + (pred_f == 0).astype(int) + (pred_g == 0).astype(int)) >= 2
+        agreed_bull = ((pred_a == 2).astype(int) + (pred_d == 2).astype(int) + (pred_f == 2).astype(int) + (pred_g == 2).astype(int)) >= 2
+        agreed_bear = ((pred_a == 0).astype(int) + (pred_d == 0).astype(int) + (pred_f == 0).astype(int) + (pred_g == 0).astype(int)) >= 2
 
         for i in range(n):
             cp, ca = close[i], atr[i]
@@ -710,13 +709,12 @@ def _execute_comparison(req: BacktestRequest) -> BacktestComparisonResponse:
         test_start = int(n * 0.70) + 12
         test_df = df_feats.iloc[test_start:].reset_index(drop=True)
 
-    model_keys = ["ensemble", "smc_ict", "technical", "price_action", "volume_profile", "footprint"]
+    model_keys = ["ensemble", "price_action", "volume_profile", "technical", "footprint"]
     optimal_tfs = {
         "ensemble": "M5 Entry (Multi-Model Consensus)",
-        "smc_ict": "M5 Entry (H1 Liquidity & FVG)",
-        "technical": "M15 Entry (EMA Trend & RSI)",
         "price_action": "M15 Entry (Wick Rejections)",
         "volume_profile": "M5 Entry (Session POC/VAH/VAL)",
+        "technical": "M15 Entry (EMA Trend & RSI)",
         "footprint": "M5 Entry (Delta Absorption)",
     }
     comparison_items: List[ModelComparisonItem] = []

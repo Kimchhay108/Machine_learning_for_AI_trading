@@ -36,7 +36,7 @@ interface TradingViewChartProps {
 }
 
 type MarkerFilterMode = 'triggers' | 'structure' | 'all' | 'clean';
-type BoxModelType = 'ensemble' | 'smc_ict' | 'technical' | 'price_action';
+type BoxModelType = 'ensemble' | 'price_action' | 'volume_profile' | 'technical' | 'footprint';
 
 interface RiskRewardBoxCoords {
   x: number;
@@ -73,13 +73,13 @@ export default function TradingViewChart({
   const entryPriceLineRef = useRef<any>(null);
   const slPriceLineRef = useRef<any>(null);
 
-  // Zoqira Smart Rails refs
+  // Smart Session Rails refs
   const dayOpenLineRef = useRef<any>(null);
   const qraResLineRef = useRef<any>(null);
   const qraSupLineRef = useRef<any>(null);
   const asiaHighLineRef = useRef<any>(null);
   const asiaLowLineRef = useRef<any>(null);
-  const [showZoqiraRails, setShowZoqiraRails] = useState(true);
+  const [showSessionRails, setShowSessionRails] = useState(true);
 
   // Overlay visibility toggles & anti-stacking filters
   const [showEMAs, setShowEMAs] = useState(true);
@@ -638,7 +638,7 @@ export default function TradingViewChart({
       }
 
       // =========================================================================
-      // ZOQIRA SMART RAILS: DAY OPEN, QRA RAILS & ASIA POOL
+      // INSTITUTIONAL SMART RAILS: DAY OPEN, DYNAMIC VOL RAILS & ASIA POOL
       // =========================================================================
       const series = candleSeriesRef.current;
       if (series) {
@@ -649,7 +649,7 @@ export default function TradingViewChart({
           ref.current = null;
         });
 
-        if (showZoqiraRails && sortedData.length > 0) {
+        if (showSessionRails && sortedData.length > 0) {
           try {
             const lastCandle = sortedData[sortedData.length - 1];
             const lastTs = (lastCandle.time as number) * (Number(lastCandle.time) > 1e11 ? 1 : 1000);
@@ -729,7 +729,7 @@ export default function TradingViewChart({
     try {
       updateBoxCoordinates();
     } catch (e) {}
-  }, [candles, showEMAs, markerFilter, showRRBoxes, showZoqiraRails, activeBoxModel, features, prediction, updateBoxCoordinates]);
+  }, [candles, showEMAs, markerFilter, showRRBoxes, showSessionRails, activeBoxModel, features, prediction, updateBoxCoordinates]);
 
   const lastCandleDate =
     candles.length > 0
@@ -832,16 +832,19 @@ export default function TradingViewChart({
               className="bg-transparent text-gold-400 font-bold text-[11px] outline-none cursor-pointer disabled:opacity-40"
             >
               <option value="ensemble" className="bg-dark-900 text-white">
-                Model E (Ensemble)
-              </option>
-              <option value="smc_ict" className="bg-dark-900 text-white">
-                Model B (SMC/ICT 2.5R)
-              </option>
-              <option value="technical" className="bg-dark-900 text-white">
-                Model A (Tech 2.0R)
+                Model E (Ensemble +211%)
               </option>
               <option value="price_action" className="bg-dark-900 text-white">
-                Model D (PA Wick Extreme)
+                Model D (PA Wick 51% WR)
+              </option>
+              <option value="volume_profile" className="bg-dark-900 text-white">
+                Model F (Vol Profile 51.5% WR)
+              </option>
+              <option value="technical" className="bg-dark-900 text-white">
+                Model A (Technical Momentum)
+              </option>
+              <option value="footprint" className="bg-dark-900 text-white">
+                Model G (Footprint Delta)
               </option>
             </select>
           </div>
@@ -870,18 +873,18 @@ export default function TradingViewChart({
             </select>
           </div>
 
-          {/* Zoqira Smart Rails Toggle */}
+          {/* Session Smart Rails Toggle */}
           <button
-            onClick={() => setShowZoqiraRails(!showZoqiraRails)}
+            onClick={() => setShowSessionRails(!showSessionRails)}
             className={`flex items-center space-x-1.5 px-2.5 py-1 rounded text-[11px] font-bold border transition ${
-              showZoqiraRails
+              showSessionRails
                 ? 'bg-cyan-500/15 border-cyan-500/40 text-cyan-300 shadow-sm'
                 : 'bg-dark-900 border-dark-700 text-gray-400 hover:text-white'
             }`}
-            title="Toggle Zoqira Day Open, QRA Dynamic Rails & Session Liquidity Pools"
+            title="Toggle Day Open, Dynamic Volatility Rails & Session Liquidity Pools"
           >
             <Sparkles className="w-3.5 h-3.5 text-cyan-400" />
-            <span>Zoqira Rails</span>
+            <span>Session Rails</span>
           </button>
 
           {/* EMA Overlay Toggle */}
@@ -1030,16 +1033,16 @@ export default function TradingViewChart({
       <div className="relative flex-1 w-full min-h-[420px]">
         <div ref={chartContainerRef} className="w-full h-full" />
 
-        {/* Zoqira Smart HUD Overlay Bar */}
-        {showZoqiraRails && (
+        {/* Smart Rails HUD Overlay Bar */}
+        {showSessionRails && (
           <div className="absolute top-3 left-3 z-20 flex flex-wrap items-center gap-2 pointer-events-none">
             <div className="flex items-center space-x-1.5 px-2.5 py-1 rounded-lg bg-[#050816]/90 border border-gold-500/40 text-gold-400 font-bold text-[11px] backdrop-blur-md shadow-lg pointer-events-auto">
               <Sparkles className="w-3.5 h-3.5 text-gold-400" />
-              <span>ZOQIRA SMART</span>
+              <span>QUANT RAILS</span>
             </div>
 
             <div className="flex items-center space-x-1.5 px-2.5 py-1 rounded-lg bg-[#050816]/90 border border-cyan-500/40 text-cyan-300 font-bold text-[11px] backdrop-blur-md shadow-lg pointer-events-auto">
-              <span>DAY OPEN & QRA RAILS</span>
+              <span>DAY OPEN & VOL RAILS</span>
             </div>
 
             <div className="flex items-center space-x-1.5 px-2.5 py-1 rounded-lg bg-[#050816]/90 border border-purple-500/40 text-purple-300 font-semibold text-[11px] backdrop-blur-md shadow-lg pointer-events-auto">
