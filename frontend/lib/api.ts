@@ -391,6 +391,7 @@ export async function runBacktest(params: {
   version?: string;
   model_type?: string;
   timeframe?: string;
+  session_window?: string;
   initial_capital?: number;
   spread?: number;
   slippage?: number;
@@ -424,6 +425,7 @@ export async function runBacktest(params: {
 export async function runBacktestComparison(params?: {
   version?: string;
   timeframe?: string;
+  session_window?: string;
   initial_capital?: number;
   spread?: number;
   slippage?: number;

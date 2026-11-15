@@ -126,7 +126,11 @@ class BacktestRequest(BaseModel):
     breakeven_r: float = Field(default=1.0, description="R:Multiple trigger to activate Breakeven")
     enable_partial_tp: bool = Field(default=False, description="Lock in 50% profit at +1.0R and trail stop-loss to breakeven (default False to let winners run)")
     partial_tp_r: float = Field(default=1.0, description="R:Multiple trigger to take 50% partial profit")
-    only_killzones: bool = Field(default=True, description="Execute trades strictly during London (07:00-10:00) & NY (12:00-15:00) Killzones")
+    session_window: str = Field(
+        default="cambodia_evening",
+        description="Active trading window: 'cambodia_evening' (7 PM - 11 PM ICT / 12:00 - 16:00 UTC), 'killzones' (London & NY Killzones), 'all_sessions' (Full Day excl. Asian)",
+    )
+    only_killzones: bool = Field(default=True, description="Execute trades strictly during London & NY Killzones")
     use_h1_gatekeeper: bool = Field(default=True, description="Enforce H1 Macro Trend alignment: Price > H1 200 EMA for BUY, Price < H1 200 EMA for SELL (default True)")
     learn_from_mistakes: bool = Field(default=True, description="AI Failure Memory: Vetoes setups matching historical loss fingerprints (low momentum chop, climax exhaustion, volatility spikes)")
     filter_high_impact_news: bool = Field(default=True, description="News Blackout: Abstain from trading ±30m around high-impact USD events (NFP, CPI, FOMC, GDP, etc.)")

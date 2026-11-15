@@ -54,6 +54,8 @@ export default function BacktestLab() {
   const [threshold, setThreshold] = useState(0.60);
   const [maxBars, setMaxBars] = useState(36);
   const [targetRR, setTargetRR] = useState<number | undefined>(1.2);
+  const [sessionWindow, setSessionWindow] = useState<string>('cambodia_evening');
+  const [timezoneDisplay, setTimezoneDisplay] = useState<'ICT' | 'UTC'>('ICT');
 
   // Chart ref
   const chartContainerRef = useRef<HTMLDivElement>(null);
@@ -146,6 +148,7 @@ export default function BacktestLab() {
         version: selectedVersion || undefined,
         model_type: selectedModel,
         timeframe: timeframe,
+        session_window: sessionWindow,
         initial_capital: Number(initialCapital),
         spread: Number(spread),
         slippage: Number(slippage),
@@ -165,7 +168,7 @@ export default function BacktestLab() {
         use_full_history: true,
         strict_structural_entry: true,
         target_rr: targetRR || 1.2,
-        post_loss_cooldown_bars: 3,
+        post_loss_cooldown_bars: 6,
       });
       setResults(res);
     } catch (err: any) {
@@ -181,6 +184,7 @@ export default function BacktestLab() {
       const compRes = await runBacktestComparison({
         version: selectedVersion || undefined,
         timeframe: timeframe,
+        session_window: sessionWindow,
         initial_capital: Number(initialCapital),
         spread: Number(spread),
         slippage: Number(slippage),
@@ -200,7 +204,7 @@ export default function BacktestLab() {
         use_full_history: true,
         strict_structural_entry: true,
         target_rr: targetRR || 1.2,
-        post_loss_cooldown_bars: 3,
+        post_loss_cooldown_bars: 6,
       });
       setComparison(compRes);
     } catch (err: any) {
@@ -403,29 +407,69 @@ export default function BacktestLab() {
               <option value={2.0}>1:2.0 (Swing Runner)</option>
             </select>
           </div>
+
+          {/* Session Window Selector */}
+          <div className="col-span-2 md:col-span-2">
+            <label className="text-gray-400 block mb-1 font-semibold flex items-center space-x-1">
+              <Clock className="w-3.5 h-3.5 text-gold-400" />
+              <span>Trading Session Window</span>
+            </label>
+            <select
+              value={sessionWindow}
+              onChange={(e) => setSessionWindow(e.target.value)}
+              className="w-full bg-dark-800 border border-dark-700 rounded px-2.5 py-1.5 text-white font-medium focus:border-gold-500 outline-none"
+            >
+              <option value="cambodia_evening">🇰🇭 Cambodia Prime (7 PM - 11 PM ICT)</option>
+              <option value="killzones">🌍 London & NY Killzones (14:00 - 22:00 ICT)</option>
+              <option value="all_sessions">🌐 Full Multi-Session (Excl. Asian)</option>
+            </select>
+          </div>
         </div>
 
         {/* Built-In Institutional Safeguards Banner (Active by Default) */}
-        <div className="flex flex-wrap items-center gap-3 mt-3 pt-3 border-t border-dark-800/80 text-[11px] text-gray-300">
+        <div className="flex flex-wrap items-center gap-2.5 mt-3 pt-3 border-t border-dark-800/80 text-[11px] text-gray-300">
           <div className="flex items-center space-x-1.5 bg-dark-800/60 border border-dark-700/60 rounded px-2.5 py-1 text-emerald-400">
             <Shield className="w-3.5 h-3.5 text-emerald-400" />
             <span className="font-semibold">Triple-Trend Alignment Active</span>
             <span className="text-gray-400">(H1 200 EMA + M5 EMA 50/200)</span>
           </div>
-          <div className="flex items-center space-x-1.5 bg-dark-800/60 border border-dark-700/60 rounded px-2.5 py-1 text-gold-400">
-            <Zap className="w-3.5 h-3.5 text-gold-400" />
-            <span className="font-semibold">Killzones Only</span>
-            <span className="text-gray-400">(London & NY)</span>
+
+          {sessionWindow === 'cambodia_evening' ? (
+            <div className="flex items-center space-x-1.5 bg-dark-800/80 border border-gold-500/50 rounded px-2.5 py-1 text-gold-400 shadow-sm">
+              <Clock className="w-3.5 h-3.5 text-gold-400" />
+              <span className="font-bold">🇰🇭 Cambodia Prime (7 PM - 11 PM ICT)</span>
+              <span className="text-gray-300 font-mono">(12:00 - 16:00 UTC)</span>
+            </div>
+          ) : sessionWindow === 'killzones' ? (
+            <div className="flex items-center space-x-1.5 bg-dark-800/60 border border-dark-700/60 rounded px-2.5 py-1 text-gold-400">
+              <Zap className="w-3.5 h-3.5 text-gold-400" />
+              <span className="font-semibold">Killzones Only</span>
+              <span className="text-gray-400">(London & NY)</span>
+            </div>
+          ) : (
+            <div className="flex items-center space-x-1.5 bg-dark-800/60 border border-dark-700/60 rounded px-2.5 py-1 text-gold-400">
+              <Clock className="w-3.5 h-3.5 text-gold-400" />
+              <span className="font-semibold">Multi-Session Active</span>
+            </div>
+          )}
+
+          <div className="flex items-center space-x-1.5 bg-dark-800/60 border border-cyan-500/40 rounded px-2.5 py-1 text-cyan-400">
+            <Shield className="w-3.5 h-3.5 text-cyan-400" />
+            <span className="font-semibold">Vol Spike Veto</span>
+            <span className="text-gray-400">(ATR ≤ 1.4x rolling)</span>
           </div>
+
+          <div className="flex items-center space-x-1.5 bg-dark-800/60 border border-indigo-500/40 rounded px-2.5 py-1 text-indigo-400">
+            <span className="font-semibold">Anti-Cluster Cooldown</span>
+            <span className="text-gray-400">(30m spacing)</span>
+          </div>
+
           <div className="flex items-center space-x-1.5 bg-dark-800/60 border border-dark-700/60 rounded px-2.5 py-1 text-rose-400">
             <AlertTriangle className="w-3.5 h-3.5 text-rose-400" />
             <span className="font-semibold">News Blackout</span>
             <span className="text-gray-400">(±30m NFP/CPI/FOMC)</span>
           </div>
-          <div className="flex items-center space-x-1.5 bg-dark-800/60 border border-dark-700/60 rounded px-2.5 py-1 text-red-400">
-            <span className="font-semibold">Asian Blackout</span>
-            <span className="text-gray-400">(21:00-07:00 UTC)</span>
-          </div>
+
           <div className="flex items-center space-x-1.5 bg-dark-800/60 border border-dark-700/60 rounded px-2.5 py-1 text-amber-400">
             <Brain className="w-3.5 h-3.5 text-amber-400" />
             <span className="font-semibold">Failure Memory</span>
@@ -936,19 +980,47 @@ export default function BacktestLab() {
       {/* Simulated Trades Log Table */}
       {results && results.trades && results.trades.length > 0 && (
         <div className="bg-dark-900 border border-dark-700 rounded-lg p-5">
-          <div className="flex items-center justify-between mb-3">
-            <h3 className="text-xs font-bold uppercase tracking-wider text-gray-300">
-              Execution Log ({results.trades.length} Completed Positions)
-            </h3>
-            <span className="text-xs text-gray-400">
-              Stop Loss & Take Profit Levels Set by Model Rules | Trade Autopsy Attached to Losses
-            </span>
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between mb-3 gap-2">
+            <div>
+              <h3 className="text-xs font-bold uppercase tracking-wider text-gray-300">
+                Execution Log ({results.trades.length} Completed Positions)
+              </h3>
+              <span className="text-[11px] text-gray-400">
+                Stop Loss & Take Profit Levels Set by Model Rules | Trade Autopsy Attached to Losses
+              </span>
+            </div>
+            {/* Timezone Toggle */}
+            <div className="flex items-center space-x-1.5 bg-dark-800 p-1 rounded border border-dark-750 text-[11px]">
+              <span className="text-gray-400 px-1 font-medium">Timezone:</span>
+              <button
+                type="button"
+                onClick={() => setTimezoneDisplay('ICT')}
+                className={`px-2 py-0.5 rounded font-semibold transition ${
+                  timezoneDisplay === 'ICT'
+                    ? 'bg-gold-500 text-dark-950 shadow-sm'
+                    : 'text-gray-400 hover:text-white'
+                }`}
+              >
+                🇰🇭 Cambodia (ICT / UTC+7)
+              </button>
+              <button
+                type="button"
+                onClick={() => setTimezoneDisplay('UTC')}
+                className={`px-2 py-0.5 rounded font-semibold transition ${
+                  timezoneDisplay === 'UTC'
+                    ? 'bg-gold-500 text-dark-950 shadow-sm'
+                    : 'text-gray-400 hover:text-white'
+                }`}
+              >
+                UTC
+              </button>
+            </div>
           </div>
           <div className="overflow-x-auto max-h-80 overflow-y-auto">
             <table className="w-full text-left text-xs">
               <thead className="bg-dark-850 text-gray-400 sticky top-0 border-b border-dark-700">
                 <tr>
-                  <th className="py-2 px-3">Date & Time (UTC)</th>
+                  <th className="py-2 px-3">Date & Time ({timezoneDisplay === 'ICT' ? 'ICT' : 'UTC'})</th>
                   <th className="py-2 px-3">Type</th>
                   <th className="py-2 px-3">Entry Price</th>
                   <th className="py-2 px-3">Stop Loss</th>
@@ -963,21 +1035,28 @@ export default function BacktestLab() {
               <tbody className="divide-y divide-dark-800 text-gray-300 font-mono">
                 {results.trades.map((t, idx) => {
                   const ms = t.entry_time > 1e11 ? t.entry_time : t.entry_time * 1000;
-                  const d = new Date(ms);
+                  const d = timezoneDisplay === 'ICT' ? new Date(ms + 7 * 3600 * 1000) : new Date(ms);
                   const dateStr = d.toISOString().slice(0, 10);
                   const timeStr = d.toISOString().slice(11, 16);
+                  const hourNum = parseInt(timeStr.slice(0, 2), 10);
+                  const minStr = timeStr.slice(3, 5);
+                  const ampm = hourNum >= 12 ? 'PM' : 'AM';
+                  const hour12 = hourNum % 12 || 12;
+                  const time12Str = `${hour12}:${minStr} ${ampm}`;
 
                   const exitMs = t.exit_time > 1e11 ? t.exit_time : t.exit_time * 1000;
-                  const exitD = new Date(exitMs);
+                  const exitD = timezoneDisplay === 'ICT' ? new Date(exitMs + 7 * 3600 * 1000) : new Date(exitMs);
                   const exitDateStr = exitD.toISOString().slice(0, 10);
                   const exitTimeStr = exitD.toISOString().slice(11, 16);
 
                   return (
                     <tr key={idx} className="hover:bg-dark-850/50">
                       <td className="py-2 px-3 whitespace-nowrap">
-                        <div className="flex flex-col" title={`Entered: ${dateStr} ${timeStr} UTC\nExited: ${exitDateStr} ${exitTimeStr} UTC`}>
+                        <div className="flex flex-col" title={`Entered: ${dateStr} ${timeStr} ${timezoneDisplay}\nExited: ${exitDateStr} ${exitTimeStr} ${timezoneDisplay}`}>
                           <span className="text-white font-medium text-[11px]">{dateStr}</span>
-                          <span className="text-[10px] text-gold-400/90">{timeStr} UTC</span>
+                          <span className="text-[10px] text-gold-400 font-semibold">
+                            {timeStr} {timezoneDisplay} {timezoneDisplay === 'ICT' && `(${time12Str})`}
+                          </span>
                         </div>
                       </td>
                       <td className="py-2 px-3">

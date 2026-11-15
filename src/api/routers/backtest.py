@@ -46,7 +46,8 @@ def generate_strategy_signals_and_levels(
     filter_high_impact_news: bool = True,
     news_blackout_mins: int = 30,
     exclude_asian_session: bool = True,
-    strict_structural_entry: bool = True,
+    strict_structural_entry: bool = False,
+    session_window: str = "cambodia_evening",
 ) -> Tuple[List[str], List[float], List[float], str, str]:
     """Generate model-tailored signals, Entry, Stop-Loss, and Take-Profit price levels.
 
@@ -73,23 +74,27 @@ def generate_strategy_signals_and_levels(
         atr = np.full(n, 2.0)
     atr = np.where(np.isnan(atr) | (atr <= 0), 2.0, atr)
 
-    # Time-based filters (Asian Session Blackout, Killzones & High-Impact News Blackouts)
+    # Time-based filters (Cambodia Evening 7 PM - 11 PM, Killzones, Asian Blackout & News Blackouts)
     if "timestamp" in test_df.columns and len(test_df) > 0:
         first_ts = test_df["timestamp"].iloc[0]
         unit = "ms" if first_ts > 1e11 else "s"
         dt = pd.to_datetime(test_df["timestamp"], unit=unit, utc=True)
         hours = dt.dt.hour.to_numpy()
+        hours_cambodia = (hours + 7) % 24
 
         # Strict Asian Session Exclusion: Never trade 21:00 to 07:00 UTC (Tokyo/Sydney low liquidity consolidation)
         is_asian = (hours >= 21) | (hours < 7)
 
-        if only_killzones:
+        sw = (session_window or "cambodia_evening").lower().strip()
+        if sw in ["cambodia_evening", "cambodia", "ict_evening"]:
+            # Cambodia 7 PM to 11 PM = 19:00 to 23:00 ICT (12:00 to 16:00 UTC New York Session)
+            in_killzones = (hours_cambodia >= 19) & (hours_cambodia < 23)
+        elif sw in ["killzones", "london_ny"]:
             in_killzones = ((hours >= 7) & (hours <= 10)) | ((hours >= 12) & (hours <= 15))
         else:
             in_killzones = ~is_asian if exclude_asian_session else np.ones(n, dtype=bool)
 
-        # Guarantee Asian session candles are strictly blocked whenever exclude_asian_session is active
-        if exclude_asian_session:
+        if exclude_asian_session and sw not in ["cambodia_evening", "cambodia", "ict_evening"]:
             in_killzones = in_killzones & (~is_asian)
 
         if filter_high_impact_news:
@@ -130,19 +135,10 @@ def generate_strategy_signals_and_levels(
         h1_bull = np.ones(n, dtype=bool)
         h1_bear = np.ones(n, dtype=bool)
 
-    # Check AI Failure Memory / Learned Mistake Filters
-    if learn_from_mistakes:
-        adx_arr = test_df.get("adx_14", pd.Series(25.0, index=test_df.index)).to_numpy()
-        rsi_arr = test_df.get("rsi_14", pd.Series(50.0, index=test_df.index)).to_numpy()
-        rolling_atr = pd.Series(atr).rolling(50, min_periods=5).mean().bfill().to_numpy()
-        atr_ratio = np.where(rolling_atr > 0, atr / rolling_atr, 1.0)
-
-        # Dynamic failure memory filter: avoid entry during extreme exhaustion spikes (ADX < 12)
-        mistake_ok_buy = (adx_arr >= 12.0)
-        mistake_ok_sell = (adx_arr >= 12.0)
-    else:
-        mistake_ok_buy = np.ones(n, dtype=bool)
-        mistake_ok_sell = np.ones(n, dtype=bool)
+    # Volatility expansion spike filter learned from loss forensics (veto entry when ATR > 1.4x rolling baseline)
+    rolling_atr = pd.Series(atr).rolling(50, min_periods=5).mean().bfill().to_numpy()
+    atr_ratio = np.where(rolling_atr > 0, atr / rolling_atr, 1.0)
+    vol_ok = (atr_ratio <= 1.40) if learn_from_mistakes else np.ones(n, dtype=bool)
 
     signals: List[str] = []
     sl_levels: List[float] = []
@@ -150,7 +146,8 @@ def generate_strategy_signals_and_levels(
 
     m_type = (model_type or "ensemble").lower().strip()
     open_p = test_df.get("open", pd.Series(close, index=test_df.index)).to_numpy()
-    atr_mult = 1.5
+    eff_rr = target_rr if target_rr and target_rr > 0 else 1.2
+    atr_mult = 1.8 if eff_rr <= 1.0 else 1.5
     swing_buf = 0.50
 
     if m_type == "smc_ict":
@@ -201,8 +198,8 @@ def generate_strategy_signals_and_levels(
             prob_buy = (dir_pl[i] >= threshold or pl_b[i] >= 0.44) and (dir_pl[i] > dir_pb[i])
             prob_sell = (dir_pb[i] >= threshold or pb_b[i] >= 0.38) and (dir_pb[i] > dir_pl[i])
 
-            is_buy = in_killzones[i] and (not news_blackout[i]) and h1_bull[i] and mistake_ok_buy[i] and cond_buy and prob_buy
-            is_sell = in_killzones[i] and (not news_blackout[i]) and h1_bear[i] and mistake_ok_sell[i] and cond_sell and prob_sell
+            is_buy = in_killzones[i] and (not news_blackout[i]) and h1_bull[i] and vol_ok[i] and cond_buy and prob_buy
+            is_sell = in_killzones[i] and (not news_blackout[i]) and h1_bear[i] and vol_ok[i] and cond_sell and prob_sell
 
             if is_buy and not is_sell:
                 signals.append("BUY")
@@ -252,8 +249,8 @@ def generate_strategy_signals_and_levels(
             prob_buy = (dir_pl[i] >= threshold or pl_a[i] >= 0.44) and (dir_pl[i] > dir_pb[i])
             prob_sell = (dir_pb[i] >= threshold or pb_a[i] >= 0.38) and (dir_pb[i] > dir_pl[i])
 
-            is_buy = in_killzones[i] and (not news_blackout[i]) and h1_bull[i] and mistake_ok_buy[i] and cond_buy and prob_buy
-            is_sell = in_killzones[i] and (not news_blackout[i]) and h1_bear[i] and mistake_ok_sell[i] and cond_sell and prob_sell
+            is_buy = in_killzones[i] and (not news_blackout[i]) and h1_bull[i] and vol_ok[i] and cond_buy and prob_buy
+            is_sell = in_killzones[i] and (not news_blackout[i]) and h1_bear[i] and vol_ok[i] and cond_sell and prob_sell
 
             if is_buy and not is_sell:
                 signals.append("BUY")
@@ -306,8 +303,8 @@ def generate_strategy_signals_and_levels(
             prob_buy = (dir_pl[i] >= threshold or pl_d[i] >= 0.44) and (dir_pl[i] > dir_pb[i])
             prob_sell = (dir_pb[i] >= threshold or pb_d[i] >= 0.38) and (dir_pb[i] > dir_pl[i])
 
-            is_buy = in_killzones[i] and (not news_blackout[i]) and h1_bull[i] and mistake_ok_buy[i] and cond_buy and prob_buy
-            is_sell = in_killzones[i] and (not news_blackout[i]) and h1_bear[i] and mistake_ok_sell[i] and cond_sell and prob_sell
+            is_buy = in_killzones[i] and (not news_blackout[i]) and h1_bull[i] and vol_ok[i] and cond_buy and prob_buy
+            is_sell = in_killzones[i] and (not news_blackout[i]) and h1_bear[i] and vol_ok[i] and cond_sell and prob_sell
 
             if is_buy and not is_sell:
                 signals.append("BUY")
@@ -360,8 +357,8 @@ def generate_strategy_signals_and_levels(
             prob_buy = (dir_pl[i] >= threshold or pl_f[i] >= 0.44) and (dir_pl[i] > dir_pb[i])
             prob_sell = (dir_pb[i] >= threshold or pb_f[i] >= 0.38) and (dir_pb[i] > dir_pl[i])
 
-            is_buy = in_killzones[i] and (not news_blackout[i]) and h1_bull[i] and mistake_ok_buy[i] and cond_buy and prob_buy
-            is_sell = in_killzones[i] and (not news_blackout[i]) and h1_bear[i] and mistake_ok_sell[i] and cond_sell and prob_sell
+            is_buy = in_killzones[i] and (not news_blackout[i]) and h1_bull[i] and vol_ok[i] and cond_buy and prob_buy
+            is_sell = in_killzones[i] and (not news_blackout[i]) and h1_bear[i] and vol_ok[i] and cond_sell and prob_sell
 
             if is_buy and not is_sell:
                 signals.append("BUY")
@@ -412,8 +409,8 @@ def generate_strategy_signals_and_levels(
             prob_buy = (dir_pl[i] >= threshold or pl_g[i] >= 0.44) and (dir_pl[i] > dir_pb[i])
             prob_sell = (dir_pb[i] >= threshold or pb_g[i] >= 0.38) and (dir_pb[i] > dir_pl[i])
 
-            is_buy = in_killzones[i] and (not news_blackout[i]) and h1_bull[i] and mistake_ok_buy[i] and cond_buy and prob_buy
-            is_sell = in_killzones[i] and (not news_blackout[i]) and h1_bear[i] and mistake_ok_sell[i] and cond_sell and prob_sell
+            is_buy = in_killzones[i] and (not news_blackout[i]) and h1_bull[i] and vol_ok[i] and cond_buy and prob_buy
+            is_sell = in_killzones[i] and (not news_blackout[i]) and h1_bear[i] and vol_ok[i] and cond_sell and prob_sell
 
             if is_buy and not is_sell:
                 signals.append("BUY")
@@ -463,8 +460,8 @@ def generate_strategy_signals_and_levels(
             prob_sell = (sig == "SELL") or (p_bear_e[i] >= 0.38 and p_bear_e[i] > p_bull_e[i])
 
             # Model E Entry Condition: Calibrated Ensemble threshold + multi-model majority consensus (toggleable)
-            is_buy = in_killzones[i] and (not news_blackout[i]) and h1_bull[i] and mistake_ok_buy[i] and prob_buy and cond_buy
-            is_sell = in_killzones[i] and (not news_blackout[i]) and h1_bear[i] and mistake_ok_sell[i] and prob_sell and cond_sell
+            is_buy = in_killzones[i] and (not news_blackout[i]) and h1_bull[i] and vol_ok[i] and prob_buy and cond_buy
+            is_sell = in_killzones[i] and (not news_blackout[i]) and h1_bear[i] and vol_ok[i] and prob_sell and cond_sell
 
             if is_buy and not is_sell:
                 signals.append("BUY")
@@ -645,12 +642,13 @@ def run_backtest(req: BacktestRequest) -> BacktestResponse:
         slippage=req.slippage,
         only_killzones=getattr(req, "only_killzones", True),
         target_rr=getattr(req, "target_rr", None),
-        use_h1_gatekeeper=getattr(req, "use_h1_gatekeeper", False),
+        use_h1_gatekeeper=getattr(req, "use_h1_gatekeeper", True),
         learn_from_mistakes=getattr(req, "learn_from_mistakes", True),
         filter_high_impact_news=getattr(req, "filter_high_impact_news", True),
         news_blackout_mins=getattr(req, "news_blackout_mins", 30),
         exclude_asian_session=getattr(req, "exclude_asian_session", True),
-        strict_structural_entry=getattr(req, "strict_structural_entry", True),
+        strict_structural_entry=getattr(req, "strict_structural_entry", False),
+        session_window=getattr(req, "session_window", "cambodia_evening"),
     )
 
     backtester = RealisticBacktestEngine(
@@ -663,7 +661,7 @@ def run_backtest(req: BacktestRequest) -> BacktestResponse:
         breakeven_r=getattr(req, "breakeven_r", 1.0),
         enable_partial_tp=getattr(req, "enable_partial_tp", False),
         partial_tp_r=getattr(req, "partial_tp_r", 1.0),
-        post_loss_cooldown_bars=getattr(req, "post_loss_cooldown_bars", 3) if getattr(req, "learn_from_mistakes", True) else 0,
+        post_loss_cooldown_bars=getattr(req, "post_loss_cooldown_bars", 6),
     )
 
     result = backtester.run(test_df, signals=signals, sl_levels=sl_levels, tp_levels=tp_levels)
@@ -733,12 +731,13 @@ def _execute_comparison(req: BacktestRequest) -> BacktestComparisonResponse:
             slippage=req.slippage,
             only_killzones=getattr(req, "only_killzones", True),
             target_rr=getattr(req, "target_rr", None),
-            use_h1_gatekeeper=getattr(req, "use_h1_gatekeeper", False),
+            use_h1_gatekeeper=getattr(req, "use_h1_gatekeeper", True),
             learn_from_mistakes=getattr(req, "learn_from_mistakes", True),
             filter_high_impact_news=getattr(req, "filter_high_impact_news", True),
             news_blackout_mins=getattr(req, "news_blackout_mins", 30),
             exclude_asian_session=getattr(req, "exclude_asian_session", True),
-            strict_structural_entry=getattr(req, "strict_structural_entry", True),
+            strict_structural_entry=getattr(req, "strict_structural_entry", False),
+            session_window=getattr(req, "session_window", "cambodia_evening"),
         )
 
         backtester = RealisticBacktestEngine(
@@ -751,7 +750,7 @@ def _execute_comparison(req: BacktestRequest) -> BacktestComparisonResponse:
             breakeven_r=getattr(req, "breakeven_r", 1.0),
             enable_partial_tp=getattr(req, "enable_partial_tp", False),
             partial_tp_r=getattr(req, "partial_tp_r", 1.0),
-            post_loss_cooldown_bars=getattr(req, "post_loss_cooldown_bars", 3) if getattr(req, "learn_from_mistakes", True) else 0,
+            post_loss_cooldown_bars=getattr(req, "post_loss_cooldown_bars", 6),
         )
 
         res = backtester.run(test_df, signals=signals, sl_levels=sl_levels, tp_levels=tp_levels)
