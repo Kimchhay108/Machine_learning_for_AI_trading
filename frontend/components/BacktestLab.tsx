@@ -8,6 +8,7 @@ import {
   runBacktest,
   fetchBacktestResults,
   runBacktestComparison,
+  fetchModels,
 } from '../lib/api';
 import {
   createChart,
@@ -32,6 +33,7 @@ import {
   Clock,
   Brain,
   Calendar,
+  Cpu,
 } from 'lucide-react';
 
 export default function BacktestLab() {
@@ -41,6 +43,8 @@ export default function BacktestLab() {
   const [comparison, setComparison] = useState<BacktestComparisonResponse | null>(null);
 
   // Model & Parameter states
+  const [availableVersions, setAvailableVersions] = useState<string[]>([]);
+  const [selectedVersion, setSelectedVersion] = useState<string>('');
   const [modelType, setModelType] = useState<string>('ensemble');
   const [timeframe, setTimeframe] = useState<string>('M5');
   const [initialCapital, setInitialCapital] = useState(10000);
@@ -64,11 +68,19 @@ export default function BacktestLab() {
   const chartRef = useRef<IChartApi | null>(null);
   const areaSeriesRef = useRef<ISeriesApi<'Area'> | null>(null);
 
-  // Load cached backtest results on mount
+  // Load cached backtest results and model versions on mount
   useEffect(() => {
     fetchBacktestResults()
       .then((res) => setResults(res))
       .catch((err) => console.log('No cached backtest:', err));
+
+    fetchModels()
+      .then((res) => {
+        const vList = (res.models || []).map((m) => m.version);
+        setAvailableVersions(vList);
+        setSelectedVersion(res.active_version || (vList.length > 0 ? vList[0] : ''));
+      })
+      .catch((err) => console.log('Failed to fetch model registry:', err));
   }, []);
 
   // Equity curve chart setup
@@ -139,6 +151,7 @@ export default function BacktestLab() {
     setLoading(true);
     try {
       const res = await runBacktest({
+        version: selectedVersion || undefined,
         model_type: selectedModel,
         timeframe: timeframe,
         initial_capital: Number(initialCapital),
@@ -174,6 +187,7 @@ export default function BacktestLab() {
     setComparisonLoading(true);
     try {
       const compRes = await runBacktestComparison({
+        version: selectedVersion || undefined,
         timeframe: timeframe,
         initial_capital: Number(initialCapital),
         spread: Number(spread),
@@ -266,7 +280,30 @@ export default function BacktestLab() {
           </span>
         </div>
 
-        <div className="grid grid-cols-2 md:grid-cols-8 gap-3 text-xs">
+        <div className="grid grid-cols-2 md:grid-cols-10 gap-3 text-xs">
+          {/* Model Version Selector */}
+          <div className="col-span-2 md:col-span-2">
+            <label className="text-gray-400 block mb-1 font-semibold flex items-center space-x-1">
+              <Cpu className="w-3.5 h-3.5 text-gold-400" />
+              <span>Model Version</span>
+            </label>
+            <select
+              value={selectedVersion}
+              onChange={(e) => setSelectedVersion(e.target.value)}
+              className="w-full bg-dark-800 border border-dark-700 rounded px-2.5 py-1.5 text-white font-medium focus:border-gold-500 outline-none"
+            >
+              {availableVersions.length === 0 ? (
+                <option value="">Active Prod</option>
+              ) : (
+                availableVersions.map((v) => (
+                  <option key={v} value={v}>
+                    {v}
+                  </option>
+                ))
+              )}
+            </select>
+          </div>
+
           {/* Model Selector */}
           <div className="col-span-2 md:col-span-2">
             <label className="text-gray-400 block mb-1 font-semibold flex items-center space-x-1">

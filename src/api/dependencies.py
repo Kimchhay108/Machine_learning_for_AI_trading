@@ -59,15 +59,34 @@ def get_prediction_engine(version: Optional[str] = None) -> PredictionEngine:
     target_version = version or current_active
     registry_dir = settings.DATA_DIR / "models" / "registry"
 
-    if _active_prediction_engine is not None and _active_version == target_version:
-        return _active_prediction_engine
-
+    # Intelligent fallback if target_version does not exist
     model_dir = registry_dir / target_version
     if not model_dir.exists():
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail=f"Model version '{target_version}' not found in registry at {registry_dir}.",
-        )
+        if current_active and (registry_dir / current_active).exists():
+            logger.warning(
+                f"Requested model '{target_version}' not found in registry. "
+                f"Falling back to active production version '{current_active}'."
+            )
+            target_version = current_active
+            model_dir = registry_dir / target_version
+        else:
+            existing_dirs = sorted([d.name for d in registry_dir.iterdir() if d.is_dir()])
+            if existing_dirs:
+                fallback_ver = existing_dirs[-1]
+                logger.warning(
+                    f"Neither '{target_version}' nor active '{current_active}' found. "
+                    f"Falling back to latest registry version '{fallback_ver}'."
+                )
+                target_version = fallback_ver
+                model_dir = registry_dir / target_version
+            else:
+                raise HTTPException(
+                    status_code=status.HTTP_404_NOT_FOUND,
+                    detail=f"No models found in registry at {registry_dir}.",
+                )
+
+    if _active_prediction_engine is not None and _active_version == target_version:
+        return _active_prediction_engine
 
     try:
         ensemble = EnsemblePredictionModel.load_suite(registry_dir, version=target_version)

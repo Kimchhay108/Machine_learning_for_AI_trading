@@ -113,7 +113,7 @@ class ActivateModelRequest(BaseModel):
 
 
 class BacktestRequest(BaseModel):
-    version: str = Field(default="v1.0.0", description="Model version to use")
+    version: Optional[str] = Field(default=None, description="Model version to use (defaults to active production version)")
     model_type: str = Field(default="ensemble", description="Strategy to backtest: 'ensemble', 'smc_ict', 'technical', 'price_action', 'volume_profile', 'footprint'")
     timeframe: str = Field(default="M5", description="Candle timeframe to backtest: 'M5', 'M15', 'H1'")
     initial_capital: float = Field(default=10000.0, ge=100.0)
