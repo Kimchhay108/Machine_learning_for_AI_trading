@@ -158,6 +158,7 @@ export default function BacktestLab() {
         use_full_history: useFullHistory,
         strict_structural_entry: strictStructuralEntry,
         target_rr: targetRR,
+        post_loss_cooldown_bars: 3,
       });
       setResults(res);
     } catch (err: any) {
@@ -191,6 +192,7 @@ export default function BacktestLab() {
         use_full_history: useFullHistory,
         strict_structural_entry: strictStructuralEntry,
         target_rr: targetRR,
+        post_loss_cooldown_bars: 3,
       });
       setComparison(compRes);
     } catch (err: any) {
@@ -793,6 +795,16 @@ export default function BacktestLab() {
                     <span className="font-semibold text-gray-200">Low-Momentum Chop Filter:</span>
                     <p className="text-gray-400 text-[10px]">
                       Vetoes entries when ADX &lt; 18.0 to eliminate sideways consolidation stop-loss whipsaws.
+                    </p>
+                  </div>
+                </div>
+
+                <div className="p-2 rounded bg-dark-800/80 border border-dark-700/60 flex items-start space-x-2">
+                  <span className="text-emerald-400 font-bold">✓</span>
+                  <div>
+                    <span className="font-semibold text-gray-200">Continuous Mistake Quarantine:</span>
+                    <p className="text-gray-400 text-[10px]">
+                      Abstains from re-entering for 3 bars (15 mins) after an SL hit to avoid revenge chop and recurring traps.
                     </p>
                   </div>
                 </div>

@@ -86,6 +86,7 @@ class PaperTradingEngine:
         filter_high_impact_news: bool = True,
         news_blackout_mins: int = 30,
         exclude_asian_session: bool = False,
+        post_loss_cooldown_bars: int = 3,
     ):
         self.initial_balance = initial_balance
         self.spread_usd = spread_usd
@@ -101,6 +102,7 @@ class PaperTradingEngine:
         self.filter_high_impact_news = filter_high_impact_news
         self.news_blackout_mins = news_blackout_mins
         self.exclude_asian_session = exclude_asian_session
+        self.post_loss_cooldown_bars = post_loss_cooldown_bars
 
         self.balance: float = initial_balance
         self.equity: float = initial_balance
@@ -108,6 +110,7 @@ class PaperTradingEngine:
         self.trade_history: List[PaperTradeRecord] = []
         self.is_running: bool = False
         self.last_candle_timestamp: Optional[int] = None
+        self.last_loss_exit_time: Optional[int] = None
 
         # Load existing state if available
         self.load_state()
@@ -240,6 +243,8 @@ class PaperTradingEngine:
                 )
                 self.trade_history.append(closed_trade)
                 self.open_position = None
+                if exit_reason == "STOP_LOSS":
+                    self.last_loss_exit_time = ts
                 self.save_state()
 
                 event_log = {
@@ -253,6 +258,15 @@ class PaperTradingEngine:
 
         # 2. Check for new order entry if flat and prediction is actionable
         if self.open_position is None and prediction is not None and prediction.direction in ["BUY", "SELL"]:
+            # AI Mistake Learning Cooldown: Abstain after a Stop Loss hit to avoid revenge chop
+            if self.last_loss_exit_time is not None:
+                scale = 1000.0 if ts > 10_000_000_000 else 1.0
+                delta_sec = (ts - self.last_loss_exit_time) / scale
+                cooldown_sec = self.post_loss_cooldown_bars * 300.0  # 5-min bars
+                if delta_sec < cooldown_sec:
+                    self.last_candle_timestamp = ts
+                    return {"action": "WAIT", "message": f"Filtered out: AI Mistake Quarantine active ({int(cooldown_sec - delta_sec)}s remaining)"}
+
             # Strict Asian session filter (Never trade 21:00 - 07:00 UTC)
             if self.exclude_asian_session:
                 dt_utc = pd.to_datetime(ts // 1000 if ts > 10_000_000_000 else ts, unit="s", utc=True)

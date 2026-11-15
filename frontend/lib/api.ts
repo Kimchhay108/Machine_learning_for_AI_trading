@@ -379,6 +379,7 @@ export async function runBacktest(params: {
   use_full_history?: boolean;
   strict_structural_entry?: boolean;
   target_rr?: number;
+  post_loss_cooldown_bars?: number;
 }): Promise<BacktestResponse> {
   const res = await fetch(`${API_BASE}/api/backtest/run`, {
     method: 'POST',
@@ -411,6 +412,7 @@ export async function runBacktestComparison(params?: {
   use_full_history?: boolean;
   strict_structural_entry?: boolean;
   target_rr?: number;
+  post_loss_cooldown_bars?: number;
 }): Promise<BacktestComparisonResponse> {
   const res = await fetch(`${API_BASE}/api/backtest/compare`, {
     method: 'POST',

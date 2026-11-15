@@ -157,8 +157,9 @@ class PredictionEngine:
         ema_align = int(latest_row.get("ema_alignment", pd.Series([0])).iloc[0])
 
         # 1. Model E (Ensemble) Setup
-        agreed_bull = sum(1 for v in [sub_tech, sub_smc, sub_pa] if v == 2)
-        agreed_bear = sum(1 for v in [sub_tech, sub_smc, sub_pa] if v == 0)
+        all_sub_preds = [sub_tech, sub_smc, sub_pa, sub_vp, sub_fp]
+        agreed_bull = sum(1 for v in all_sub_preds if v == 2)
+        agreed_bear = sum(1 for v in all_sub_preds if v == 0)
 
         # Strict Model E Condition: Requires Calibrated threshold AND multi-model agreement (>=2 sub-models)
         if decision == "BUY" and agreed_bull < 2:
@@ -168,22 +169,24 @@ class PredictionEngine:
 
         if decision == "BUY":
             why_e = (
-                f"Stacked meta-calibrator triggers BUY with {round(conf * 100, 1)}% confidence, "
+                f"Stacked meta-calibrator triggers BUY with {round(conf * 100, 1)}% directional confidence, "
                 f"clearing the {round(self.ensemble.confidence_threshold * 100, 1)}% execution filter. "
-                f"{agreed_bull}/3 sub-models agree on Bullish upside. Dynamic ATR Stop Loss at ${stop_loss} with 2.0 R:R Target at ${take_profit}."
+                f"{agreed_bull}/5 sub-models agree on Bullish upside. Dynamic ATR Stop Loss at ${stop_loss} with 2.0 R:R Target at ${take_profit}."
             )
         elif decision == "SELL":
             why_e = (
-                f"Stacked meta-calibrator triggers SELL with {round(conf * 100, 1)}% confidence, "
+                f"Stacked meta-calibrator triggers SELL with {round(conf * 100, 1)}% directional confidence, "
                 f"clearing the {round(self.ensemble.confidence_threshold * 100, 1)}% execution filter. "
-                f"{agreed_bear}/3 sub-models agree on Bearish downside. Dynamic ATR Stop Loss at ${stop_loss} with 2.0 R:R Target at ${take_profit}."
+                f"{agreed_bear}/5 sub-models agree on Bearish downside. Dynamic ATR Stop Loss at ${stop_loss} with 2.0 R:R Target at ${take_profit}."
             )
         else:
             why_e = (
-                f"Ensemble advises WAIT: directional confidence ({round(conf * 100, 1)}%) or multi-model agreement ({agreed_bull if decision=='BUY' else agreed_bear}/3) "
+                f"Ensemble advises WAIT: directional confidence ({round(conf * 100, 1)}%) or multi-model agreement ({agreed_bull if decision=='BUY' else agreed_bear}/5) "
                 f"did not meet strict entry confluence (Tech: {'BULL' if sub_tech==2 else ('BEAR' if sub_tech==0 else 'NEUT')}, "
                 f"SMC: {'BULL' if sub_smc==2 else ('BEAR' if sub_smc==0 else 'NEUT')}, "
-                f"PA: {'BULL' if sub_pa==2 else ('BEAR' if sub_pa==0 else 'NEUT')}). Preserving capital until all conditions align."
+                f"PA: {'BULL' if sub_pa==2 else ('BEAR' if sub_pa==0 else 'NEUT')}, "
+                f"VP: {'BULL' if sub_vp==2 else ('BEAR' if sub_vp==0 else 'NEUT')}, "
+                f"FP: {'BULL' if sub_fp==2 else ('BEAR' if sub_fp==0 else 'NEUT')}). Preserving capital until all conditions align."
             )
 
         setup_ensemble = {

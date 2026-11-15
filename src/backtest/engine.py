@@ -78,6 +78,7 @@ class RealisticBacktestEngine:
         enable_partial_tp: bool = False,      # Scale out 50% position size at +1.0R - default False to avoid cutting winning trades early
         partial_tp_r: float = 1.0,            # Target R:Multiple to take 50% partial profit
         partial_tp_ratio: float = 0.50,       # Fraction of position to scale out
+        post_loss_cooldown_bars: int = 3,     # AI Mistake Quarantine: Bars to abstain after an SL hit to avoid revenge chop
     ):
         self.initial_balance = initial_balance
         self.risk_pct_per_trade = risk_pct_per_trade
@@ -89,6 +90,7 @@ class RealisticBacktestEngine:
         self.enable_partial_tp = enable_partial_tp
         self.partial_tp_r = partial_tp_r
         self.partial_tp_ratio = partial_tp_ratio
+        self.post_loss_cooldown_bars = post_loss_cooldown_bars
 
     def run(
         self,
@@ -114,6 +116,7 @@ class RealisticBacktestEngine:
         trades: List[TradeRecord] = []
 
         active_trade: Optional[Dict[str, Any]] = None
+        last_loss_exit_bar: int = -9999
 
         high = df["high"].to_numpy()
         low = df["low"].to_numpy()
@@ -252,6 +255,8 @@ class RealisticBacktestEngine:
                         r_mult = pnl / total_risk_dlr if total_risk_dlr > 0 else 0.0
 
                 if trade_closed:
+                    if exit_reason == "STOP_LOSS":
+                        last_loss_exit_bar = i
                     balance += pnl
                     trades.append(TradeRecord(
                         entry_time=active_trade["entry_time"],
@@ -273,6 +278,10 @@ class RealisticBacktestEngine:
 
             # 2. Check signal for new entry (if not already in a position)
             if active_trade is None and i < n - 1:
+                # AI Mistake Learning Cooldown: Veto entries within quarantine window of a previous Stop Loss
+                if (i - last_loss_exit_bar) < self.post_loss_cooldown_bars:
+                    continue
+
                 sig = signals[i]
                 if sig in ["BUY", "SELL"]:
                     risk_amount = balance * self.risk_pct_per_trade

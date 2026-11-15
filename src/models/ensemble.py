@@ -142,13 +142,17 @@ class EnsemblePredictionModel:
         p_neut = probs[:, 1]
         p_bull = probs[:, 2]
 
-        # Directional confidence is max(p_bull, p_bear)
-        dir_confidence = np.maximum(p_bull, p_bear)
+        # Directional relative probability normalization (removes neutral drift bias)
+        dir_sum = p_bull + p_bear + 1e-9
+        dir_p_bull = p_bull / dir_sum
+        dir_p_bear = p_bear / dir_sum
+        dir_confidence = np.maximum(dir_p_bull, dir_p_bear)
 
         decisions = []
         for i in range(len(X)):
-            conf = dir_confidence[i]
-            if conf < self.confidence_threshold:
+            # Active directional signal if directional relative probability meets threshold or raw meets threshold
+            is_confident = (dir_confidence[i] >= self.confidence_threshold) or (max(p_bull[i], p_bear[i]) >= self.confidence_threshold)
+            if not is_confident:
                 decisions.append("WAIT")
             elif p_bull[i] > p_bear[i]:
                 decisions.append("BUY")
