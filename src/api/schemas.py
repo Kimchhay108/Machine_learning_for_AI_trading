@@ -127,8 +127,8 @@ class BacktestRequest(BaseModel):
     enable_partial_tp: bool = Field(default=False, description="Lock in 50% profit at +1.0R and trail stop-loss to breakeven (default False to let winners run)")
     partial_tp_r: float = Field(default=1.0, description="R:Multiple trigger to take 50% partial profit")
     session_window: str = Field(
-        default="cambodia_evening",
-        description="Active trading window: 'cambodia_evening' (7 PM - 11 PM ICT / 12:00 - 16:00 UTC), 'killzones' (London & NY Killzones), 'all_sessions' (Full Day excl. Asian)",
+        default="cambodia_day",
+        description="Active trading window: 'cambodia_day' (7 AM - 11 PM ICT / 00:00 - 16:00 UTC Full Awake Day), 'cambodia_evening' (7 PM - 11 PM ICT / 12:00 - 16:00 UTC US Open), 'killzones' (London & NY Killzones), 'all_sessions' (Full 24-Hour)",
     )
     only_killzones: bool = Field(default=True, description="Execute trades strictly during London & NY Killzones")
     use_h1_gatekeeper: bool = Field(default=True, description="Enforce H1 Macro Trend alignment: Price > H1 200 EMA for BUY, Price < H1 200 EMA for SELL (default True)")

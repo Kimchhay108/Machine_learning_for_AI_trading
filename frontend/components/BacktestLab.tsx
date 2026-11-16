@@ -54,7 +54,7 @@ export default function BacktestLab() {
   const [threshold, setThreshold] = useState(0.60);
   const [maxBars, setMaxBars] = useState(36);
   const [targetRR, setTargetRR] = useState<number | undefined>(1.2);
-  const [sessionWindow, setSessionWindow] = useState<string>('cambodia_evening');
+  const [sessionWindow, setSessionWindow] = useState<string>('cambodia_day');
   const [timezoneDisplay, setTimezoneDisplay] = useState<'ICT' | 'UTC'>('ICT');
 
   // Chart ref
@@ -411,9 +411,10 @@ export default function BacktestLab() {
               onChange={(e) => setSessionWindow(e.target.value)}
               className="w-full bg-dark-800 border border-dark-700 rounded px-2.5 py-1.5 text-white font-medium focus:border-gold-500 outline-none"
             >
-              <option value="cambodia_evening">🇰🇭 Cambodia Prime (7 PM - 11 PM ICT)</option>
+              <option value="cambodia_day">🇰🇭 Cambodia Full Day (7 AM - 11 PM ICT)</option>
+              <option value="cambodia_evening">🇰🇭 Cambodia Prime (7 PM - 11 PM ICT / NY Session)</option>
               <option value="killzones">🌍 London & NY Killzones (14:00 - 22:00 ICT)</option>
-              <option value="all_sessions">🌐 Full Multi-Session (Excl. Asian)</option>
+              <option value="all_sessions">🌐 24-Hour Multi-Session</option>
             </select>
           </div>
         </div>
@@ -426,7 +427,13 @@ export default function BacktestLab() {
             <span className="text-gray-400">(H1 200 EMA + M5 EMA 50/200)</span>
           </div>
 
-          {sessionWindow === 'cambodia_evening' ? (
+          {sessionWindow === 'cambodia_day' ? (
+            <div className="flex items-center space-x-1.5 bg-dark-800/80 border border-gold-500/50 rounded px-2.5 py-1 text-gold-400 shadow-sm">
+              <Clock className="w-3.5 h-3.5 text-gold-400" />
+              <span className="font-bold">🇰🇭 Cambodia Awake Window (7 AM - 11 PM ICT)</span>
+              <span className="text-gray-300 font-mono">(00:00 - 16:00 UTC)</span>
+            </div>
+          ) : sessionWindow === 'cambodia_evening' ? (
             <div className="flex items-center space-x-1.5 bg-dark-800/80 border border-gold-500/50 rounded px-2.5 py-1 text-gold-400 shadow-sm">
               <Clock className="w-3.5 h-3.5 text-gold-400" />
               <span className="font-bold">🇰🇭 Cambodia Prime (7 PM - 11 PM ICT)</span>

@@ -85,8 +85,11 @@ def generate_strategy_signals_and_levels(
         # Strict Asian Session Exclusion: Never trade 21:00 to 07:00 UTC (Tokyo/Sydney low liquidity consolidation)
         is_asian = (hours >= 21) | (hours < 7)
 
-        sw = (session_window or "cambodia_evening").lower().strip()
-        if sw in ["cambodia_evening", "cambodia", "ict_evening"]:
+        sw = (session_window or "cambodia_day").lower().strip()
+        if sw in ["cambodia_day", "cambodia_7am_11pm", "cambodia_awake", "cambodia_full"]:
+            # Cambodia 7 AM to 11 PM = 07:00 to 23:00 ICT (00:00 to 16:00 UTC Full Waking Window)
+            in_killzones = (hours_cambodia >= 7) & (hours_cambodia < 23)
+        elif sw in ["cambodia_evening", "cambodia_prime", "cambodia", "ict_evening"]:
             # Cambodia 7 PM to 11 PM = 19:00 to 23:00 ICT (12:00 to 16:00 UTC New York Session)
             in_killzones = (hours_cambodia >= 19) & (hours_cambodia < 23)
         elif sw in ["killzones", "london_ny"]:
@@ -94,7 +97,7 @@ def generate_strategy_signals_and_levels(
         else:
             in_killzones = ~is_asian if exclude_asian_session else np.ones(n, dtype=bool)
 
-        if exclude_asian_session and sw not in ["cambodia_evening", "cambodia", "ict_evening"]:
+        if exclude_asian_session and sw not in ["cambodia_day", "cambodia_7am_11pm", "cambodia_awake", "cambodia_full", "cambodia_evening", "cambodia_prime", "cambodia", "ict_evening"]:
             in_killzones = in_killzones & (~is_asian)
 
         if filter_high_impact_news:
