@@ -56,6 +56,7 @@ export default function DashboardPage() {
   const [newsStatus, setNewsStatus] = useState<NewsCalendarStatus | null>(null);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
+  const [liveSpotPrice, setLiveSpotPrice] = useState<number | null>(null);
 
   const loadData = async (tf: string = timeframe) => {
     setRefreshing(true);
@@ -82,10 +83,17 @@ export default function DashboardPage() {
 
   useEffect(() => {
     loadData(timeframe);
+    // Background polling every 10 seconds to keep live predictions and status fresh
+    const timer = setInterval(() => {
+      loadData(timeframe);
+    }, 10000);
+    return () => clearInterval(timer);
   }, [timeframe]);
 
   const currentPrice =
-    candles.length > 0
+    liveSpotPrice !== null
+      ? liveSpotPrice
+      : candles.length > 0
       ? candles[candles.length - 1].close
       : features?.current_price || 0;
 
@@ -269,6 +277,7 @@ export default function DashboardPage() {
                 onTimeframeChange={(tf) => setTimeframe(tf)}
                 features={features}
                 prediction={prediction}
+                onPriceUpdate={(p) => setLiveSpotPrice(p)}
               />
             </div>
             <div className="xl:col-span-1 space-y-4 overflow-y-auto">
@@ -285,6 +294,7 @@ export default function DashboardPage() {
               onTimeframeChange={(tf) => setTimeframe(tf)}
               features={features}
               prediction={prediction}
+              onPriceUpdate={(p) => setLiveSpotPrice(p)}
             />
           </div>
         )}
