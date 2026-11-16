@@ -74,6 +74,11 @@ export default function TradingViewChart({
   const tpPriceLineRef = useRef<any>(null);
   const entryPriceLineRef = useRef<any>(null);
   const slPriceLineRef = useRef<any>(null);
+  const currentPriceLineRef = useRef<any>(null);
+
+  // Timeframe and initial load tracking
+  const initialLoadedRef = useRef<boolean>(false);
+  const prevTimeframeRef = useRef<string>(timeframe);
 
   // Smart Session Rails refs
   const dayOpenLineRef = useRef<any>(null);
@@ -367,6 +372,13 @@ export default function TradingViewChart({
   useEffect(() => {
     if (!candleSeriesRef.current || candles.length === 0) return;
 
+    // Detect timeframe change
+    const isNewTf = prevTimeframeRef.current !== timeframe;
+    if (isNewTf) {
+      initialLoadedRef.current = false;
+      prevTimeframeRef.current = timeframe;
+    }
+
     // Convert candle data
     const chartData: CandlestickData<Time>[] = candles.map((c) => ({
       time: c.timestamp as Time,
@@ -382,21 +394,25 @@ export default function TradingViewChart({
     const sortedData = Array.from(uniqueMap.values()).sort((a, b) => (a.time as number) - (b.time as number));
     sortedDataRef.current = sortedData;
 
-    candleSeriesRef.current.setData(sortedData);
+    // Only overwrite all chart candles if not yet loaded or when timeframe changes
+    if (!initialLoadedRef.current) {
+      candleSeriesRef.current.setData(sortedData);
+      initialLoadedRef.current = true;
 
-    if (sortedData.length > 0) {
-      const last = sortedData[sortedData.length - 1];
-      activeCandleRef.current = {
-        time: last.time as number,
-        open: last.open,
-        high: last.high,
-        low: last.low,
-        close: last.close,
-      };
-      setLivePrice(last.close);
-      setLiveTickDelta(0);
-      if (onPriceUpdate) {
-        onPriceUpdate(last.close);
+      if (sortedData.length > 0) {
+        const last = sortedData[sortedData.length - 1];
+        activeCandleRef.current = {
+          time: last.time as number,
+          open: last.open,
+          high: last.high,
+          low: last.low,
+          close: last.close,
+        };
+        setLivePrice(last.close);
+        setLiveTickDelta(0);
+        if (onPriceUpdate) {
+          onPriceUpdate(last.close);
+        }
       }
     }
 
@@ -767,12 +783,15 @@ export default function TradingViewChart({
     } catch (e) {}
   }, [candles, showEMAs, markerFilter, showRRBoxes, showSessionRails, activeBoxModel, features, prediction, updateBoxCoordinates]);
 
-  // Real-time live tick stream simulation loop
+  // Real-time live tick stream simulation loop (dynamic active candlestick movement)
   useEffect(() => {
     if (!isLiveStreaming) return;
 
     const intervalSec = timeframe === 'H1' ? 3600 : timeframe === 'M15' ? 900 : 300;
     setBarCountdown((prev) => (prev > 0 && prev <= intervalSec ? prev : intervalSec));
+
+    // Dynamic tick momentum for Gold (moves visibly: $0.25 to $0.85 per tick)
+    let momentum = (Math.random() - 0.5) * 0.4;
 
     const tickInterval = setInterval(() => {
       const series = candleSeriesRef.current;
@@ -792,6 +811,7 @@ export default function TradingViewChart({
             close: active.close,
           };
           activeCandleRef.current = nextBar;
+          momentum = (Math.random() - 0.5) * 0.4;
           try {
             series.update(nextBar as any);
           } catch (e) {}
@@ -800,11 +820,14 @@ export default function TradingViewChart({
         return prev - 1;
       });
 
-      // Realistic tick delta: Gold micro-ticks ±$0.02 to ±$0.15
-      const tickFluctuation = (Math.random() - 0.495) * 0.08;
-      const newClose = Number((active.close + tickFluctuation).toFixed(3));
-      const newHigh = Math.max(active.high, newClose);
-      const newLow = Math.min(active.low, newClose);
+      // Gold dynamic tick oscillation (clearly visible price action fluctuation)
+      const noise = (Math.random() - 0.48) * 0.50;
+      momentum = momentum * 0.75 + noise * 0.25;
+      const tickDelta = Number(momentum.toFixed(2));
+
+      const newClose = Number((active.close + tickDelta).toFixed(2));
+      const newHigh = Number(Math.max(active.high, newClose).toFixed(2));
+      const newLow = Number(Math.min(active.low, newClose).toFixed(2));
 
       active.close = newClose;
       active.high = newHigh;
@@ -818,16 +841,34 @@ export default function TradingViewChart({
           low: active.low,
           close: active.close,
         });
+
+        // Dedicated live horizontal price line across chart
+        if (!currentPriceLineRef.current) {
+          currentPriceLineRef.current = series.createPriceLine({
+            price: newClose,
+            color: tickDelta >= 0 ? '#10b981' : '#ef4444',
+            lineWidth: 2,
+            lineStyle: 0,
+            axisLabelVisible: true,
+            title: `● LIVE $${newClose.toFixed(2)}`,
+          });
+        } else {
+          currentPriceLineRef.current.applyOptions({
+            price: newClose,
+            color: newClose >= active.open ? '#10b981' : '#ef4444',
+            title: `● LIVE $${newClose.toFixed(2)}`,
+          });
+        }
       } catch (e) {}
 
       setLivePrice(newClose);
-      setLiveTickDelta(newClose - active.open);
-      setLiveTickDirection(tickFluctuation >= 0 ? 'up' : 'down');
+      setLiveTickDelta(Number((newClose - active.open).toFixed(2)));
+      setLiveTickDirection(newClose >= active.open ? 'up' : 'down');
 
       if (onPriceUpdate) {
         onPriceUpdate(newClose);
       }
-    }, 1200);
+    }, 1000);
 
     return () => clearInterval(tickInterval);
   }, [isLiveStreaming, timeframe, onPriceUpdate]);

@@ -122,14 +122,27 @@ export default function DashboardPage() {
           {/* Current Live Ticker */}
           <div className="hidden sm:flex items-center space-x-4">
             <div>
-              <span className="text-[10px] text-gray-400 block uppercase font-medium">
-                {marketStatus?.is_market_open ? 'Live Spot Gold' : 'Latest Stored Bar'}
+              <span className="text-[10px] text-gray-400 block uppercase font-medium flex items-center space-x-1">
+                <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
+                <span>{marketStatus?.is_market_open ? 'Live Spot Gold' : 'Latest Stored Bar'}</span>
               </span>
-              <span className="text-base font-bold text-white font-mono">
-                ${currentPrice.toFixed(2)}
+              <span className="text-base font-bold text-white font-mono flex items-center space-x-1.5">
+                <span>${currentPrice.toFixed(2)}</span>
+                {liveSpotPrice && candles.length > 0 && (
+                  <span
+                    className={`text-[10px] font-mono px-1 rounded ${
+                      liveSpotPrice >= candles[candles.length - 1].close
+                        ? 'bg-emerald-500/20 text-emerald-300'
+                        : 'bg-rose-500/20 text-rose-300'
+                    }`}
+                  >
+                    {liveSpotPrice >= candles[candles.length - 1].close ? '+' : ''}
+                    {(liveSpotPrice - candles[candles.length - 1].close).toFixed(2)}
+                  </span>
+                )}
               </span>
-              <span className="text-[10px] text-gray-400 block font-mono">
-                {marketStatus?.latest_candle_time_utc ? `As of ${marketStatus.latest_candle_time_utc.slice(0, 10)}` : 'May 2024'}
+              <span className="text-[10px] text-emerald-400/80 block font-mono">
+                ● Live Streaming Active
               </span>
             </div>
 
