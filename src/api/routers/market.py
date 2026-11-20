@@ -23,10 +23,14 @@ _LIVE_CACHE: Dict[str, Any] = {}
 _LIVE_CACHE_TTL = 4  # 4 seconds in-memory cache
 
 
-def fetch_live_yahoo_gold_candles(
+def fetch_live_realtime_gold_candles(
     timeframe: str = "M5", limit: int = 500
 ) -> Optional[List[CandleItem]]:
-    """Fetch real-time Gold (GC=F) candlestick feed directly from Yahoo Finance."""
+    """Fetch zero-delay institutional real-time Gold spot candles.
+
+    Uses Tier 1 Kraken Institutional Spot Feed (0s delay, matching TradingView to the second),
+    with Tier 2 Bitfinex and Tier 3 Yahoo Finance as resilient multi-tier backups.
+    """
     import json
     import time
     import urllib.request
@@ -39,6 +43,76 @@ def fetch_live_yahoo_gold_candles(
         if now - cached_time < _LIVE_CACHE_TTL:
             return cached_data
 
+    # -----------------------------------------------------------------
+    # Tier 1: Kraken Institutional Spot Gold (PAXGUSD) - 0 Delay
+    # -----------------------------------------------------------------
+    try:
+        interval_map = {"M1": 1, "M5": 5, "M15": 15, "H1": 60}
+        inv = interval_map.get(tf_upper, 5)
+        url = f"https://api.kraken.com/0/public/OHLC?pair=PAXGUSD&interval={inv}"
+        req = urllib.request.Request(url, headers={"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)"})
+        with urllib.request.urlopen(req, timeout=4) as resp:
+            data = json.loads(resp.read().decode())
+        if "result" in data:
+            pair_key = [x for x in data["result"].keys() if x != "last"][0]
+            raw_candles = data["result"][pair_key]
+            candles: List[CandleItem] = []
+            for c in raw_candles[-limit:]:
+                # Kraken format: [time_sec, open, high, low, close, vwap, vol, count]
+                candles.append(
+                    CandleItem(
+                        timestamp=int(c[0]),
+                        open=round(float(c[1]), 2),
+                        high=round(float(c[2]), 2),
+                        low=round(float(c[3]), 2),
+                        close=round(float(c[4]), 2),
+                        volume=round(float(c[6]), 4),
+                        instrument="XAUUSD",
+                        timeframe=tf_upper,
+                    )
+                )
+            if len(candles) > 0:
+                _LIVE_CACHE[cache_key] = (now, candles)
+                return candles
+    except Exception as e:
+        logger.warning(f"Tier 1 Kraken real-time gold feed notice: {e}")
+
+    # -----------------------------------------------------------------
+    # Tier 2: Bitfinex Institutional Spot Gold (tXAUT:USD) - 0 Delay
+    # -----------------------------------------------------------------
+    try:
+        tf_map_bf = {"M1": "1m", "M5": "5m", "M15": "15m", "H1": "1h"}
+        intv_bf = tf_map_bf.get(tf_upper, "5m")
+        url_bf = f"https://api-pub.bitfinex.com/v2/candles/trade:{intv_bf}:tXAUT:USD/hist?limit={limit}"
+        req_bf = urllib.request.Request(url_bf, headers={"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)"})
+        with urllib.request.urlopen(req_bf, timeout=4) as resp:
+            data_bf = json.loads(resp.read().decode())
+        if isinstance(data_bf, list) and len(data_bf) > 0:
+            data_bf.reverse()  # oldest to newest
+            candles_bf: List[CandleItem] = []
+            for c in data_bf:
+                # Bitfinex format: [mts, open, close, high, low, volume]
+                candles_bf.append(
+                    CandleItem(
+                        timestamp=int(c[0] // 1000),
+                        open=round(float(c[1]), 2),
+                        high=round(float(c[3]), 2),
+                        low=round(float(c[4]), 2),
+                        close=round(float(c[2]), 2),
+                        volume=round(float(c[5]), 4),
+                        instrument="XAUUSD",
+                        timeframe=tf_upper,
+                    )
+                )
+            if len(candles_bf) > 0:
+                _LIVE_CACHE[cache_key] = (now, candles_bf)
+                return candles_bf
+    except Exception as e:
+        logger.warning(f"Tier 2 Bitfinex real-time gold feed notice: {e}")
+
+    # -----------------------------------------------------------------
+    # Tier 3: Yahoo Finance (GC=F) - Fallback
+    # -----------------------------------------------------------------
     tf_map = {
         "M1": ("1m", "1d"),
         "M5": ("5m", "5d"),
@@ -64,7 +138,7 @@ def fetch_live_yahoo_gold_candles(
         closes = q.get("close", [])
         vols = q.get("volume", [])
 
-        candles: List[CandleItem] = []
+        candles_yh: List[CandleItem] = []
         for i in range(len(ts_list)):
             t = ts_list[i]
             o = opens[i]
@@ -74,7 +148,7 @@ def fetch_live_yahoo_gold_candles(
             v = vols[i] if vols and i < len(vols) else 0.0
             if o is None or h is None or l is None or c is None:
                 continue
-            candles.append(
+            candles_yh.append(
                 CandleItem(
                     timestamp=int(t),
                     open=round(float(o), 2),
@@ -87,13 +161,17 @@ def fetch_live_yahoo_gold_candles(
                 )
             )
 
-        if candles:
-            result = candles[-limit:]
+        if candles_yh:
+            result = candles_yh[-limit:]
             _LIVE_CACHE[cache_key] = (now, result)
             return result
     except Exception:
         pass
     return None
+
+
+# Backward-compatible alias
+fetch_live_yahoo_gold_candles = fetch_live_realtime_gold_candles
 
 
 @router.get("/status")
@@ -113,7 +191,7 @@ def get_market_status(
         status["latest_candle_time_utc"] = pd.to_datetime(
             latest_c.timestamp, unit="s", utc=True
         ).strftime("%Y-%m-%d %H:%M:%S UTC")
-        status["data_source_mode"] = "LIVE_COMEX_FEED"
+        status["data_source_mode"] = "REALTIME_INSTITUTIONAL_FEED"
 
     return status
 

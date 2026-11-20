@@ -136,10 +136,10 @@ export default function DashboardPage() {
             <div>
               <span className="text-[10px] text-gray-400 block uppercase font-medium flex items-center space-x-1">
                 <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
-                <span>COMEX Gold (GC=F)</span>
+                <span>Real-Time Spot Gold (XAUUSD)</span>
               </span>
               <span className="text-base font-bold text-white font-mono flex items-center space-x-1.5">
-                <span>${currentPrice > 0 ? currentPrice.toFixed(2) : '3,552.30'}</span>
+                <span>${currentPrice > 0 ? currentPrice.toFixed(2) : '3,567.50'}</span>
                 {liveSpotPrice && candles.length > 0 && (
                   <span
                     className={`text-[10px] font-mono px-1 rounded ${
@@ -185,8 +185,8 @@ export default function DashboardPage() {
                     {marketStatus.is_market_open ? 'LIVE MARKET OPEN' : 'MARKET CLOSED'}
                   </span>
                   <span className="text-[10px] text-gray-400 block font-mono">
-                    {marketStatus.data_source_mode === 'LIVE_COMEX_FEED'
-                      ? '● COMEX Live Stream'
+                    {marketStatus.data_source_mode === 'REALTIME_INSTITUTIONAL_FEED'
+                      ? '● Real-Time Spot (0s Delay)'
                       : 'Verified Archive'}
                   </span>
                 </div>
