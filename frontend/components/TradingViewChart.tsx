@@ -512,9 +512,15 @@ export default function TradingViewChart({
         ref.current = null;
       });
 
-      if (showRRBoxes && prediction && prediction.direction !== 'WAIT') {
+      const shouldDisplayLines =
+        showRRBoxes &&
+        prediction &&
+        prediction.show_chart_lines &&
+        (prediction.direction === 'BUY' || prediction.direction === 'SELL');
+
+      if (shouldDisplayLines) {
         try {
-          const entryPrice = prediction.entry_reference_price;
+          const entryPrice = prediction.trigger_price || prediction.entry_reference_price;
           const slPrice = prediction.stop_loss_reference;
           const tp1Price = prediction.take_profit_reference;
           const isLong = prediction.direction === 'BUY';
@@ -523,22 +529,32 @@ export default function TradingViewChart({
             prediction.take_profit_2 ||
             (isLong ? Number((entryPrice + rDist * 2.4).toFixed(2)) : Number((entryPrice - rDist * 2.4).toFixed(2)));
 
-          const status = prediction.signal_status || 'ACTIVE';
-          const tp1Title = status === 'TP1_HIT' || status === 'TP2_HIT'
-            ? `✓ TP1 BANKED $${tp1Price.toFixed(2)} (+1.2R)`
+          const status = prediction.signal_status || 'PENDING_TRIGGER';
+          const rangeLow = prediction.entry_range_low || entryPrice;
+          const rangeHigh = prediction.entry_range_high || entryPrice;
+
+          const isPending = status === 'PENDING_TRIGGER';
+          const entryTitle = isPending
+            ? `🟡 AI ${prediction.direction} TRIGGER $${entryPrice.toFixed(2)} (RANGE $${rangeLow.toFixed(2)}-$${rangeHigh.toFixed(2)})`
+            : `🟡 ENTRY $${entryPrice.toFixed(2)} [IN TRADE]`;
+
+          const tp1Title = isPending
+            ? `TP1 $${tp1Price.toFixed(2)} (+1.2R Target)`
             : `TP1 $${tp1Price.toFixed(2)} (+1.2R)`;
-          const tp2Title = status === 'TP2_HIT'
-            ? `🎯 TP2 HIT $${tp2Price.toFixed(2)} (+2.4R)`
+
+          const tp2Title = isPending
+            ? `TP2 $${tp2Price.toFixed(2)} (+2.4R Target)`
             : `TP2 $${tp2Price.toFixed(2)} (+2.4R)`;
-          const slTitle = status === 'STOPPED_OUT'
-            ? `🔴 STOPPED OUT $${slPrice.toFixed(2)} (-1.0R)`
+
+          const slTitle = isPending
+            ? `SL $${slPrice.toFixed(2)} (-1.0R Risk)`
             : `SL $${slPrice.toFixed(2)} (-1.0R)`;
 
           // 1. Take Profit 2 Line (Rich Emerald, Dotted, extends across full chart)
           if (typeof tp2Price === 'number' && !isNaN(tp2Price) && tp2Price > 0) {
             tp2PriceLineRef.current = activeSeries.createPriceLine({
               price: tp2Price,
-              color: status === 'TP2_HIT' ? '#10b981' : '#059669',
+              color: '#059669',
               lineWidth: 2,
               lineStyle: 1, // Dotted
               axisLabelVisible: true,
@@ -566,7 +582,7 @@ export default function TradingViewChart({
               lineWidth: 2,
               lineStyle: 2, // Dashed
               axisLabelVisible: true,
-              title: `ENTRY $${entryPrice.toFixed(2)} [LOCKED]`,
+              title: entryTitle,
             });
           }
 

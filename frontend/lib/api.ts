@@ -118,10 +118,17 @@ export interface PredictionResponse {
       footprint_prediction?: number;
     };
   };
-  signal_status?: 'ACTIVE' | 'TP1_HIT' | 'TP2_HIT' | 'STOPPED_OUT' | 'EXPIRED' | 'WAITING';
+  signal_status?: 'SCANNING' | 'PENDING_TRIGGER' | 'IN_POSITION' | 'TRADE_COMPLETED_TP' | 'TRADE_COMPLETED_SL' | 'ACTIVE' | 'TP1_HIT' | 'TP2_HIT' | 'STOPPED_OUT' | 'EXPIRED' | 'WAITING';
   current_r_multiple?: number;
   is_setup_locked?: boolean;
   setup_id?: string;
+  entry_range_low?: number;
+  entry_range_high?: number;
+  trigger_price?: number;
+  show_chart_lines?: boolean;
+  trade_ended_reason?: string;
+  ai_recommendation_text?: string;
+  distance_to_trigger?: number;
 }
 
 export interface ModelInfo {

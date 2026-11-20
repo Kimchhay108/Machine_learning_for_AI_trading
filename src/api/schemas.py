@@ -65,6 +65,13 @@ class PredictionResponse(BaseModel):
     current_r_multiple: Optional[float] = 0.0
     is_setup_locked: Optional[bool] = True
     setup_id: Optional[str] = None
+    entry_range_low: Optional[float] = None
+    entry_range_high: Optional[float] = None
+    trigger_price: Optional[float] = None
+    show_chart_lines: Optional[bool] = False
+    trade_ended_reason: Optional[str] = None
+    ai_recommendation_text: Optional[str] = None
+    distance_to_trigger: Optional[float] = None
 
 
 class ModelInfo(BaseModel):

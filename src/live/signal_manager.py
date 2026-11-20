@@ -1,8 +1,10 @@
 """Institutional AI Signal Lifecycle and State Manager.
 
-Locks AI trade setups (Entry, SL, TP1, TP2) so that price lines remain
-100% stationary and never drift/adjust with tick noise or new bars while a trade is active.
-Tracks trade progress in real-time (Floating R, TP1 Hit, TP2 Hit, Stopped Out).
+Implements trigger-based range execution and explicit trade termination:
+- Calculates when to Buy or Sell at an institutional range (Limit / Retest Zone).
+- Status follows: SCANNING -> PENDING_TRIGGER -> IN_POSITION -> TRADE_COMPLETED (TP or SL).
+- Chart lines appear ONLY during active recommendations (PENDING_TRIGGER or IN_POSITION).
+- When a trade ends on TP or SL, lines are automatically removed so the chart stays clean.
 """
 
 from dataclasses import asdict, dataclass
@@ -23,11 +25,11 @@ class ActiveSignalState:
     setup_id: str
     instrument: str
     timeframe: str
-    direction: str                     # "BUY" or "SELL"
-    entry_reference_price: float       # 100% LOCKED
-    stop_loss_reference: float         # 100% LOCKED
-    take_profit_reference: float       # 100% LOCKED
-    take_profit_2: float               # 100% LOCKED
+    direction: str                     # "BUY", "SELL", or "WAIT"
+    entry_reference_price: float       # Exact Execution Trigger Level
+    stop_loss_reference: float         # Invalidation SL Level
+    take_profit_reference: float       # Conservative TP1 Level
+    take_profit_2: float               # Runner TP2 Level
     risk_reward_ratio: float
     prediction_timestamp: int
     created_at_utc: str
@@ -38,13 +40,23 @@ class ActiveSignalState:
     market_regime: str
     model_version: str
     contributing_features: Dict[str, Any]
-    signal_status: str = "ACTIVE"      # "ACTIVE", "TP1_HIT", "TP2_HIT", "STOPPED_OUT", "EXPIRED"
+    signal_status: str = "SCANNING"    # "SCANNING", "PENDING_TRIGGER", "IN_POSITION", "TRADE_COMPLETED_TP", "TRADE_COMPLETED_SL"
     current_r_multiple: float = 0.0
     highest_price_seen: float = 0.0
     lowest_price_seen: float = 0.0
     is_setup_locked: bool = True
     bars_active: int = 0
     last_evaluated_price: float = 0.0
+
+    # Range execution & clean lifecycle
+    entry_range_low: float = 0.0
+    entry_range_high: float = 0.0
+    trigger_price: float = 0.0
+    show_chart_lines: bool = False
+    trade_ended_reason: Optional[str] = None
+    trade_ended_at_utc: Optional[str] = None
+    ai_recommendation_text: Optional[str] = None
+    distance_to_trigger: float = 0.0
 
     def to_dict(self) -> Dict[str, Any]:
         return asdict(self)
@@ -96,69 +108,110 @@ class ActiveSignalManager:
         candle_high: Optional[float] = None,
         candle_low: Optional[float] = None,
     ) -> Optional[ActiveSignalState]:
-        """Retrieve the current active signal state and evaluate it against live market price."""
+        """Retrieve and update active signal state against live market ticks."""
         key = self._get_key(instrument, timeframe)
         signal = self._active_signals.get(key)
         if not signal:
             return None
 
-        # If trade is already closed / terminal, do not evaluate further
-        if signal.signal_status in ("TP2_HIT", "STOPPED_OUT", "EXPIRED"):
+        # If trade already completed, it remains ended until user resets or next confirmed setup
+        if signal.signal_status in ("TRADE_COMPLETED_TP", "TRADE_COMPLETED_SL"):
+            signal.show_chart_lines = False
             return signal
 
         if current_price is None or current_price <= 0:
             return signal
 
-        # Track intrabar extremes
         high = candle_high if candle_high is not None else current_price
         low = candle_low if candle_low is not None else current_price
         signal.last_evaluated_price = round(current_price, 2)
         signal.highest_price_seen = max(signal.highest_price_seen or current_price, high)
         signal.lowest_price_seen = min(signal.lowest_price_seen or current_price, low)
 
-        entry = signal.entry_reference_price
-        sl = signal.stop_loss_reference
-        tp1 = signal.take_profit_reference
-        tp2 = signal.take_profit_2
-        risk = abs(entry - sl)
-        if risk <= 0:
-            risk = 2.0
+        # -------------------------------------------------------------
+        # Phase 1: PENDING_TRIGGER (Waiting for price to reach the AI range)
+        # -------------------------------------------------------------
+        if signal.signal_status == "PENDING_TRIGGER":
+            signal.show_chart_lines = True
+            if signal.direction == "SELL":
+                signal.distance_to_trigger = round(max(0.0, signal.trigger_price - current_price), 2)
+                # Sell Trigger: price rallies into the Sell Range
+                if high >= signal.trigger_price or high >= signal.entry_range_low:
+                    signal.signal_status = "IN_POSITION"
+                    signal.entry_reference_price = signal.trigger_price
+                    logger.info(f"Signal {signal.setup_id} TRIGGERED SELL at ${signal.trigger_price:.2f} (High reached ${high:.2f})")
+            elif signal.direction == "BUY":
+                signal.distance_to_trigger = round(max(0.0, current_price - signal.trigger_price), 2)
+                # Buy Trigger: price pulls back into the Buy Range
+                if low <= signal.trigger_price or low <= signal.entry_range_high:
+                    signal.signal_status = "IN_POSITION"
+                    signal.entry_reference_price = signal.trigger_price
+                    logger.info(f"Signal {signal.setup_id} TRIGGERED BUY at ${signal.trigger_price:.2f} (Low reached ${low:.2f})")
 
-        if signal.direction == "BUY":
-            current_r = round((current_price - entry) / risk, 2)
-            signal.current_r_multiple = current_r
+        # -------------------------------------------------------------
+        # Phase 2: IN_POSITION (Active trade running to TP or SL)
+        # -------------------------------------------------------------
+        if signal.signal_status == "IN_POSITION":
+            signal.show_chart_lines = True
+            entry = signal.entry_reference_price
+            sl = signal.stop_loss_reference
+            tp1 = signal.take_profit_reference
+            tp2 = signal.take_profit_2
+            risk = abs(entry - sl)
+            if risk <= 0:
+                risk = 2.0
 
-            # Check Stop Loss Invalidation
-            if low <= sl or current_price <= sl:
-                signal.signal_status = "STOPPED_OUT"
-                logger.info(f"Signal {signal.setup_id} STOPPED OUT at ${sl:.2f} (-1.0R)")
-            # Check Take Profit 2 Full Target
-            elif high >= tp2 or current_price >= tp2:
-                signal.signal_status = "TP2_HIT"
-                logger.info(f"Signal {signal.setup_id} TP2 REACHED at ${tp2:.2f} (+2.4R)")
-            # Check Take Profit 1 Target
-            elif high >= tp1 or current_price >= tp1:
-                if signal.signal_status == "ACTIVE":
-                    signal.signal_status = "TP1_HIT"
-                    logger.info(f"Signal {signal.setup_id} TP1 REACHED at ${tp1:.2f} (+1.2R)")
+            now_str = datetime.now(timezone.utc).strftime("%H:%M:%S UTC")
 
-        elif signal.direction == "SELL":
-            current_r = round((entry - current_price) / risk, 2)
-            signal.current_r_multiple = current_r
+            if signal.direction == "BUY":
+                current_r = round((current_price - entry) / risk, 2)
+                signal.current_r_multiple = current_r
 
-            # Check Stop Loss Invalidation
-            if high >= sl or current_price >= sl:
-                signal.signal_status = "STOPPED_OUT"
-                logger.info(f"Signal {signal.setup_id} STOPPED OUT at ${sl:.2f} (-1.0R)")
-            # Check Take Profit 2 Full Target
-            elif low <= tp2 or current_price <= tp2:
-                signal.signal_status = "TP2_HIT"
-                logger.info(f"Signal {signal.setup_id} TP2 REACHED at ${tp2:.2f} (+2.4R)")
-            # Check Take Profit 1 Target
-            elif low <= tp1 or current_price <= tp1:
-                if signal.signal_status == "ACTIVE":
-                    signal.signal_status = "TP1_HIT"
-                    logger.info(f"Signal {signal.setup_id} TP1 REACHED at ${tp1:.2f} (+1.2R)")
+                # Check Stop Loss
+                if low <= sl or current_price <= sl:
+                    signal.signal_status = "TRADE_COMPLETED_SL"
+                    signal.show_chart_lines = False
+                    signal.trade_ended_reason = f"Trade Ended: Stop Loss Hit at ${sl:.2f} (-1.0R)"
+                    signal.trade_ended_at_utc = now_str
+                    logger.info(f"Trade {signal.setup_id} ENDED: STOPPED OUT at ${sl:.2f}")
+
+                # Check Take Profit 2 (Full Target Win)
+                elif high >= tp2 or current_price >= tp2:
+                    signal.signal_status = "TRADE_COMPLETED_TP"
+                    signal.show_chart_lines = False
+                    signal.trade_ended_reason = f"Trade Ended: Take Profit 2 Smashed at ${tp2:.2f} (+2.4R Won!)"
+                    signal.trade_ended_at_utc = now_str
+                    logger.info(f"Trade {signal.setup_id} ENDED: TP2 HIT at ${tp2:.2f}")
+
+                # Check Take Profit 1
+                elif high >= tp1 or current_price >= tp1:
+                    signal.current_r_multiple = max(signal.current_r_multiple, 1.2)
+                    signal.ai_recommendation_text = f"TP1 Reached (+1.2R Secured). Trailing stop to Breakeven (${entry:.2f}). Runner targeting TP2 (${tp2:.2f})."
+
+            elif signal.direction == "SELL":
+                current_r = round((entry - current_price) / risk, 2)
+                signal.current_r_multiple = current_r
+
+                # Check Stop Loss
+                if high >= sl or current_price >= sl:
+                    signal.signal_status = "TRADE_COMPLETED_SL"
+                    signal.show_chart_lines = False
+                    signal.trade_ended_reason = f"Trade Ended: Stop Loss Hit at ${sl:.2f} (-1.0R)"
+                    signal.trade_ended_at_utc = now_str
+                    logger.info(f"Trade {signal.setup_id} ENDED: STOPPED OUT at ${sl:.2f}")
+
+                # Check Take Profit 2 (Full Target Win)
+                elif low <= tp2 or current_price <= tp2:
+                    signal.signal_status = "TRADE_COMPLETED_TP"
+                    signal.show_chart_lines = False
+                    signal.trade_ended_reason = f"Trade Ended: Take Profit 2 Smashed at ${tp2:.2f} (+2.4R Won!)"
+                    signal.trade_ended_at_utc = now_str
+                    logger.info(f"Trade {signal.setup_id} ENDED: TP2 HIT at ${tp2:.2f}")
+
+                # Check Take Profit 1
+                elif low <= tp1 or current_price <= tp1:
+                    signal.current_r_multiple = max(signal.current_r_multiple, 1.2)
+                    signal.ai_recommendation_text = f"TP1 Reached (+1.2R Secured). Trailing stop to Breakeven (${entry:.2f}). Runner targeting TP2 (${tp2:.2f})."
 
         self.save_state()
         return signal
@@ -169,41 +222,75 @@ class ActiveSignalManager:
         instrument: str,
         timeframe: str,
         live_price: float,
+        atr: float = 3.50,
     ) -> ActiveSignalState:
-        """Lock in a brand new AI trade setup. Levels are 100% frozen from this moment onwards."""
+        """Calculate and lock an institutional execution range setup."""
         key = self._get_key(instrument, timeframe)
         ts = int(prediction.prediction_timestamp or (datetime.now(timezone.utc).timestamp() * 1000))
         now_utc = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S UTC")
         setup_id = f"AI-{instrument.upper()}-{timeframe.upper()}-{ts}"
 
-        entry = round(live_price, 2)
-        risk = abs(prediction.entry_reference_price - prediction.stop_loss_reference)
-        if risk <= 0:
-            risk = 3.50
+        p = round(live_price, 2)
+        safe_atr = max(atr, 2.0)
 
-        # Maintain exact R:R distance anchored to initial entry
-        if prediction.direction == "BUY":
-            sl = round(entry - risk, 2)
-            tp1 = round(entry + (risk * prediction.risk_reward_ratio), 2)
-            tp2 = round(entry + (risk * prediction.risk_reward_ratio * 2.0), 2)
-        elif prediction.direction == "SELL":
-            sl = round(entry + risk, 2)
-            tp1 = round(entry - (risk * prediction.risk_reward_ratio), 2)
-            tp2 = round(entry - (risk * prediction.risk_reward_ratio * 2.0), 2)
+        # -------------------------------------------------------------
+        # Range Calculations based on Quantitative Confluence
+        # -------------------------------------------------------------
+        if prediction.direction == "SELL":
+            # Recommend Short on retest of resistance / premium range above price
+            range_low = round(p + (safe_atr * 0.30), 2)
+            range_high = round(p + (safe_atr * 0.75), 2)
+            trigger = round((range_low + range_high) / 2.0, 2)
+            sl = round(range_high + (safe_atr * 1.0), 2)
+            risk = round(sl - trigger, 2)
+            tp1 = round(trigger - (risk * 1.2), 2)
+            tp2 = round(trigger - (risk * 2.4), 2)
+            recommendation = (
+                f"AI Quantitative Model E triggers SELL BIAS ({int(prediction.confidence * 100)}% edge). "
+                f"Recommend selling when price retests the ${range_low:.2f} ── ${range_high:.2f} range."
+            )
+            dist = round(max(0.0, trigger - p), 2)
+            # If current price is already inside the range, trigger immediately!
+            initial_status = "IN_POSITION" if p >= range_low else "PENDING_TRIGGER"
+
+        elif prediction.direction == "BUY":
+            # Recommend Long on pullback to support / discount range below price
+            range_high = round(p - (safe_atr * 0.30), 2)
+            range_low = round(p - (safe_atr * 0.75), 2)
+            trigger = round((range_low + range_high) / 2.0, 2)
+            sl = round(range_low - (safe_atr * 1.0), 2)
+            risk = round(trigger - sl, 2)
+            tp1 = round(trigger + (risk * 1.2), 2)
+            tp2 = round(trigger + (risk * 2.4), 2)
+            recommendation = (
+                f"AI Quantitative Model E triggers BUY BIAS ({int(prediction.confidence * 100)}% edge). "
+                f"Recommend buying when price pulls back into the ${range_low:.2f} ── ${range_high:.2f} range."
+            )
+            dist = round(max(0.0, p - trigger), 2)
+            initial_status = "IN_POSITION" if p <= range_high else "PENDING_TRIGGER"
+
         else:
-            sl = prediction.stop_loss_reference
-            tp1 = prediction.take_profit_reference
-            tp2 = prediction.take_profit_2 or round(entry + (risk * 2.4), 2)
+            range_low = p
+            range_high = p
+            trigger = p
+            sl = round(p - safe_atr, 2)
+            tp1 = round(p + (safe_atr * 1.2), 2)
+            tp2 = round(p + (safe_atr * 2.4), 2)
+            recommendation = "Market in Observation Mode. Awaiting high-probability structure confluence."
+            dist = 0.0
+            initial_status = "SCANNING"
 
         contributing = dict(prediction.contributing_features or {})
         contributing.update({
             "setup_id": setup_id,
-            "locked_entry": entry,
+            "entry_range_low": range_low,
+            "entry_range_high": range_high,
+            "trigger_price": trigger,
             "locked_sl": sl,
             "locked_tp1": tp1,
             "locked_tp2": tp2,
-            "signal_status": "ACTIVE",
-            "is_setup_locked": True,
+            "signal_status": initial_status,
+            "show_chart_lines": (initial_status in ("PENDING_TRIGGER", "IN_POSITION")),
         })
 
         new_signal = ActiveSignalState(
@@ -211,7 +298,7 @@ class ActiveSignalManager:
             instrument=instrument.upper(),
             timeframe=timeframe.upper(),
             direction=prediction.direction,
-            entry_reference_price=entry,
+            entry_reference_price=trigger,
             stop_loss_reference=sl,
             take_profit_reference=tp1,
             take_profit_2=tp2,
@@ -225,18 +312,29 @@ class ActiveSignalManager:
             market_regime=prediction.market_regime,
             model_version=prediction.model_version,
             contributing_features=contributing,
-            signal_status="ACTIVE",
+            signal_status=initial_status,
             current_r_multiple=0.0,
-            highest_price_seen=entry,
-            lowest_price_seen=entry,
+            highest_price_seen=p,
+            lowest_price_seen=p,
             is_setup_locked=True,
             bars_active=0,
-            last_evaluated_price=entry,
+            last_evaluated_price=p,
+            entry_range_low=range_low,
+            entry_range_high=range_high,
+            trigger_price=trigger,
+            show_chart_lines=(initial_status in ("PENDING_TRIGGER", "IN_POSITION")),
+            trade_ended_reason=None,
+            ai_recommendation_text=recommendation,
+            distance_to_trigger=dist,
         )
 
         self._active_signals[key] = new_signal
         self.save_state()
-        logger.info(f"Locked new stationary AI setup {setup_id}: {prediction.direction} @ ${entry:.2f} | SL: ${sl:.2f} | TP1: ${tp1:.2f} | TP2: ${tp2:.2f}")
+        logger.info(
+            f"Locked AI Range Recommendation {setup_id}: {prediction.direction} "
+            f"Range: ${range_low:.2f}-${range_high:.2f} (Trigger: ${trigger:.2f}) | "
+            f"SL: ${sl:.2f} | TP1: ${tp1:.2f} | Status: {initial_status}"
+        )
         return new_signal
 
     def reset_signal(self, instrument: str, timeframe: str) -> None:

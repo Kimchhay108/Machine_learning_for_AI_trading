@@ -52,26 +52,38 @@ export default function AIAnalysisCard({ prediction, loading, onTradeExecuted, o
     take_profit_2,
     risk_reward_ratio,
     model_version,
-    signal_status,
+    signal_status = 'SCANNING',
     current_r_multiple = 0.0,
     is_setup_locked = true,
+    entry_range_low,
+    entry_range_high,
+    trigger_price,
+    show_chart_lines = false,
+    trade_ended_reason,
+    ai_recommendation_text,
+    distance_to_trigger = 0.0,
   } = prediction;
 
   const isBuy = direction === 'BUY';
   const isSell = direction === 'SELL';
   const isWait = direction === 'WAIT';
 
+  const isPending = signal_status === 'PENDING_TRIGGER';
+  const isInTrade = signal_status === 'IN_POSITION';
+  const isTradeEnded = signal_status === 'TRADE_COMPLETED_TP' || signal_status === 'TRADE_COMPLETED_SL';
+
   const bullPct = Math.round((bullish_probability || 0) * 100);
   const neutPct = Math.round((neutral_probability || 0) * 100);
   const bearPct = Math.round((bearish_probability || 0) * 100);
   const confPct = Math.round((confidence || 0) * 100);
 
-  const riskDist = Math.abs(entry_reference_price - stop_loss_reference);
-  const reward1Dist = Math.abs(take_profit_reference - entry_reference_price);
+  const effTrigger = trigger_price || entry_reference_price;
+  const riskDist = Math.abs(effTrigger - stop_loss_reference);
+  const reward1Dist = Math.abs(take_profit_reference - effTrigger);
   const tp2Val =
     take_profit_2 ||
-    (isBuy ? entry_reference_price + riskDist * 2.4 : entry_reference_price - riskDist * 2.4);
-  const reward2Dist = Math.abs(tp2Val - entry_reference_price);
+    (isBuy ? effTrigger + riskDist * 2.4 : effTrigger - riskDist * 2.4);
+  const reward2Dist = Math.abs(tp2Val - effTrigger);
 
   const handleResetSignal = async () => {
     setResetting(true);
@@ -141,36 +153,74 @@ export default function AIAnalysisCard({ prediction, loading, onTradeExecuted, o
         </div>
       </div>
 
-      {/* Setup Status Banner (Stationary / Tracking) */}
-      {!isWait && (
-        <div
-          className={`px-3 py-2 rounded-lg border flex items-center justify-between text-xs font-mono ${
-            signal_status === 'TP2_HIT'
-              ? 'bg-emerald-950/40 border-emerald-500/40 text-emerald-300'
-              : signal_status === 'TP1_HIT'
-              ? 'bg-teal-950/40 border-teal-500/40 text-teal-300'
-              : signal_status === 'STOPPED_OUT'
-              ? 'bg-red-950/40 border-red-500/40 text-red-300'
-              : 'bg-dark-800/80 border-gold-500/30 text-gold-300'
-          }`}
-        >
+      {/* Setup Status Banner (Trigger-based Lifecycle) */}
+      <div
+        className={`px-3.5 py-2.5 rounded-lg border text-xs font-mono space-y-1 ${
+          signal_status === 'TRADE_COMPLETED_TP'
+            ? 'bg-emerald-950/40 border-emerald-500/50 text-emerald-300'
+            : signal_status === 'TRADE_COMPLETED_SL'
+            ? 'bg-red-950/40 border-red-500/50 text-red-300'
+            : isPending
+            ? 'bg-amber-950/30 border-amber-500/40 text-amber-300'
+            : isInTrade
+            ? 'bg-cyan-950/30 border-cyan-500/40 text-cyan-300'
+            : 'bg-dark-800/80 border-dark-700 text-gray-400'
+        }`}
+      >
+        <div className="flex items-center justify-between">
           <div className="flex items-center space-x-2">
-            <Lock className="w-3.5 h-3.5 text-gold-400 shrink-0" />
-            <span className="font-bold">
-              {signal_status === 'TP2_HIT'
-                ? '🎯 TP2 HIT (+2.4R FULL TARGET WON)'
-                : signal_status === 'TP1_HIT'
-                ? '💎 TP1 BANKED (+1.2R LOCKED) • RUNNER TO TP2'
-                : signal_status === 'STOPPED_OUT'
-                ? '🔴 STOPPED OUT (-1.0R INVALIDATED)'
-                : '🔒 SETUP LOCKED • LEVELS STATIONARY'}
+            {isTradeEnded ? (
+              <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0" />
+            ) : isPending ? (
+              <Target className="w-4 h-4 text-amber-400 shrink-0 animate-pulse" />
+            ) : isInTrade ? (
+              <Zap className="w-4 h-4 text-cyan-400 shrink-0" />
+            ) : (
+              <Activity className="w-4 h-4 text-gray-400 shrink-0" />
+            )}
+            <span className="font-bold uppercase tracking-wider text-[11px]">
+              {signal_status === 'TRADE_COMPLETED_TP'
+                ? '🏆 TRADE CONCLUDED • TAKE PROFIT HIT'
+                : signal_status === 'TRADE_COMPLETED_SL'
+                ? '🛑 TRADE CONCLUDED • STOP LOSS HIT'
+                : isPending
+                ? `⏳ AWAITING TRIGGER • ${direction} RANGE`
+                : isInTrade
+                ? '⚡ IN POSITION • ACTIVE TRADE'
+                : '🔍 OBSERVATION MODE • SCANNING STRUCTURE'}
             </span>
           </div>
           <span className="font-bold">
-            {signal_status === 'ACTIVE'
+            {isInTrade
               ? `Floating: ${current_r_multiple >= 0 ? '+' : ''}${current_r_multiple.toFixed(2)}R`
-              : signal_status}
+              : isPending
+              ? `$${distance_to_trigger.toFixed(2)} to Trigger`
+              : isTradeEnded
+              ? 'LINES CLEARED'
+              : 'LINES HIDDEN'}
           </span>
+        </div>
+        <p className="text-[11px] opacity-90 font-sans leading-tight">
+          {trade_ended_reason
+            ? `${trade_ended_reason} — Chart lines cleared to prevent clutter.`
+            : isPending
+            ? `Price must reach the $${entry_range_low?.toFixed(2)} ── $${entry_range_high?.toFixed(2)} range (Trigger: $${effTrigger.toFixed(2)}) to activate entry.`
+            : isInTrade
+            ? `Position filled at $${effTrigger.toFixed(2)}. Managing trade toward TP1 ($${take_profit_reference.toFixed(2)}) and TP2 ($${tp2Val.toFixed(2)}).`
+            : 'No high-conviction trade active. Waiting for institutional liquidity sweep or structure shift.'}
+        </p>
+      </div>
+
+      {/* AI Calculation Rationale Box */}
+      {ai_recommendation_text && (
+        <div className="bg-dark-850 border border-dark-750 rounded-lg p-3 text-xs space-y-1">
+          <span className="text-[10px] uppercase font-bold text-gold-400 tracking-wider flex items-center gap-1.5">
+            <Target className="w-3.5 h-3.5 text-gold-400" />
+            AI Calculation & Recommendation
+          </span>
+          <p className="text-gray-300 font-mono text-[11px] leading-relaxed">
+            {ai_recommendation_text}
+          </p>
         </div>
       )}
 
@@ -279,12 +329,16 @@ export default function AIAnalysisCard({ prediction, loading, onTradeExecuted, o
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
         <div className="bg-dark-850 border border-dark-750 rounded-lg p-2 text-center">
           <span className="text-[10px] uppercase tracking-wider text-gray-400 block font-medium">
-            AI Entry
+            {isPending ? 'Limit Trigger' : isInTrade ? 'Filled Entry' : 'AI Trigger'}
           </span>
           <span className="text-xs sm:text-sm font-mono font-bold text-gold-400 block mt-0.5">
-            ${entry_reference_price > 0 ? entry_reference_price.toFixed(2) : '---'}
+            ${effTrigger > 0 ? effTrigger.toFixed(2) : '---'}
           </span>
-          <span className="text-[10px] text-gray-400 font-mono">Signal Anchor</span>
+          <span className="text-[10px] text-gray-400 font-mono">
+            {isPending && entry_range_low && entry_range_high
+              ? `$${entry_range_low.toFixed(0)}-$${entry_range_high.toFixed(0)} Zone`
+              : 'Stationary Level'}
+          </span>
         </div>
 
         <div className="bg-dark-850 border border-dark-750 rounded-lg p-2 text-center">
@@ -357,29 +411,40 @@ export default function AIAnalysisCard({ prediction, loading, onTradeExecuted, o
         </div>
       </div>
 
-      {/* Execute Paper Trade Action Button */}
-      <button
-        onClick={handleExecutePaper}
-        disabled={executing || isWait}
-        className={`w-full py-2.5 px-4 rounded-lg font-bold text-xs uppercase tracking-wider flex items-center justify-center space-x-2 transition-all ${
-          isBuy
-            ? 'bg-bull-600 hover:bg-bull-500 text-white shadow-lg shadow-bull-600/30 active:scale-[0.99]'
-            : isSell
-            ? 'bg-bear-600 hover:bg-bear-500 text-white shadow-lg shadow-bear-600/30 active:scale-[0.99]'
-            : 'bg-dark-800 text-gray-400 border border-dark-700 cursor-not-allowed opacity-60'
-        }`}
-      >
-        <Zap className="w-4 h-4" />
-        <span>
-          {executing
-            ? 'Routing to Paper Trading Ledger...'
-            : isBuy
-            ? 'Execute AI Paper Long ($3,550+)'
-            : isSell
-            ? 'Execute AI Paper Short ($3,550+)'
-            : 'AI Preserving Capital (Waiting for Signal)'}
-        </span>
-      </button>
+      {/* Execute Paper Trade / Scan Next Setup Action Button */}
+      {isTradeEnded ? (
+        <button
+          onClick={handleResetSignal}
+          disabled={resetting}
+          className="w-full py-2.5 px-4 rounded-lg font-bold text-xs uppercase tracking-wider flex items-center justify-center space-x-2 bg-gold-600 hover:bg-gold-500 text-black shadow-lg shadow-gold-600/30 active:scale-[0.99] transition-all"
+        >
+          <RotateCcw className={`w-4 h-4 ${resetting ? 'animate-spin' : ''}`} />
+          <span>{resetting ? 'Scanning Market...' : 'Trade Concluded — Scan Next AI Setup'}</span>
+        </button>
+      ) : (
+        <button
+          onClick={handleExecutePaper}
+          disabled={executing || isWait || signal_status === 'SCANNING'}
+          className={`w-full py-2.5 px-4 rounded-lg font-bold text-xs uppercase tracking-wider flex items-center justify-center space-x-2 transition-all ${
+            isBuy
+              ? 'bg-bull-600 hover:bg-bull-500 text-white shadow-lg shadow-bull-600/30 active:scale-[0.99]'
+              : isSell
+              ? 'bg-bear-600 hover:bg-bear-500 text-white shadow-lg shadow-bear-600/30 active:scale-[0.99]'
+              : 'bg-dark-800 text-gray-400 border border-dark-700 cursor-not-allowed opacity-60'
+          }`}
+        >
+          <Zap className="w-4 h-4" />
+          <span>
+            {executing
+              ? 'Routing to Paper Trading Ledger...'
+              : isPending
+              ? `Execute Limit ${direction} at $${effTrigger.toFixed(2)}`
+              : isInTrade
+              ? `Manage ${direction} Position in Ledger`
+              : 'AI Observing Market (Scanning for Edge)'}
+          </span>
+        </button>
+      )}
 
       {executeMsg && (
         <div className="p-2.5 rounded bg-dark-850 border border-gold-500/30 text-[11px] text-gold-300 flex items-center space-x-2">

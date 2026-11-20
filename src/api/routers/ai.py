@@ -75,7 +75,7 @@ def get_prediction(
     c_high = latest_c.high if latest_c else current_price
     c_low = latest_c.low if latest_c else current_price
 
-    # 1. Check if we already have an active locked trade setup
+    # 1. Check if we already have an active or recently completed trade setup
     active_state = signal_manager.get_signal(
         instrument=instrument,
         timeframe=timeframe,
@@ -84,8 +84,8 @@ def get_prediction(
         candle_low=c_low,
     )
 
-    if active_state and active_state.signal_status in ("ACTIVE", "TP1_HIT"):
-        # Setup is locked: levels remain 100% stationary across the chart!
+    if active_state and active_state.signal_status in ("PENDING_TRIGGER", "IN_POSITION", "TRADE_COMPLETED_TP", "TRADE_COMPLETED_SL"):
+        # Setup is tracked in state machine with clear lifecycle
         return PredictionResponse(
             instrument=active_state.instrument,
             timeframe=active_state.timeframe,
@@ -107,9 +107,16 @@ def get_prediction(
             current_r_multiple=active_state.current_r_multiple,
             is_setup_locked=True,
             setup_id=active_state.setup_id,
+            entry_range_low=active_state.entry_range_low,
+            entry_range_high=active_state.entry_range_high,
+            trigger_price=active_state.trigger_price,
+            show_chart_lines=active_state.show_chart_lines,
+            trade_ended_reason=active_state.trade_ended_reason,
+            ai_recommendation_text=active_state.ai_recommendation_text,
+            distance_to_trigger=active_state.distance_to_trigger,
         )
 
-    # 2. No active trade running (or previous completed/stopped out): evaluate AI model
+    # 2. No active trade running: evaluate AI model
     engine: PredictionEngine = get_prediction_engine(version)
     pred = engine.predict_candle(
         candle_features=df_feats,
@@ -118,6 +125,13 @@ def get_prediction(
         live_price=current_price,
     )
 
+    # Extract dynamic ATR for range calibration
+    atr_val = 3.50
+    if "atr_14" in df_feats.columns:
+        last_atr = float(df_feats["atr_14"].iloc[-1])
+        if not np.isnan(last_atr) and last_atr > 0:
+            atr_val = last_atr
+
     # 3. If AI triggers a valid trade setup (BUY or SELL with >= 50% confidence), lock it in!
     if pred.direction in ("BUY", "SELL") and pred.confidence >= 0.50:
         locked_state = signal_manager.lock_new_signal(
@@ -125,6 +139,7 @@ def get_prediction(
             instrument=instrument,
             timeframe=timeframe,
             live_price=current_price,
+            atr=atr_val,
         )
         return PredictionResponse(
             instrument=locked_state.instrument,
@@ -143,18 +158,32 @@ def get_prediction(
             risk_reward_ratio=locked_state.risk_reward_ratio,
             model_version=locked_state.model_version,
             contributing_features=locked_state.contributing_features,
-            signal_status="ACTIVE",
+            signal_status=locked_state.signal_status,
             current_r_multiple=0.0,
             is_setup_locked=True,
             setup_id=locked_state.setup_id,
+            entry_range_low=locked_state.entry_range_low,
+            entry_range_high=locked_state.entry_range_high,
+            trigger_price=locked_state.trigger_price,
+            show_chart_lines=locked_state.show_chart_lines,
+            trade_ended_reason=None,
+            ai_recommendation_text=locked_state.ai_recommendation_text,
+            distance_to_trigger=locked_state.distance_to_trigger,
         )
 
-    # 4. Market is in WAIT / Observation mode (no locked trade)
+    # 4. Market is in SCANNING / Observation mode (no lines on chart!)
     pred_dict = pred.to_dict()
-    pred_dict["signal_status"] = "WAITING"
+    pred_dict["signal_status"] = "SCANNING"
     pred_dict["current_r_multiple"] = 0.0
     pred_dict["is_setup_locked"] = False
     pred_dict["setup_id"] = None
+    pred_dict["entry_range_low"] = current_price
+    pred_dict["entry_range_high"] = current_price
+    pred_dict["trigger_price"] = current_price
+    pred_dict["show_chart_lines"] = False
+    pred_dict["trade_ended_reason"] = None
+    pred_dict["ai_recommendation_text"] = "AI Observation Mode: Scanning structural imbalance and order blocks. No trade active."
+    pred_dict["distance_to_trigger"] = 0.0
     return PredictionResponse(**pred_dict)
 
 
