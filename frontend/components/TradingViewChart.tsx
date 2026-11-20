@@ -37,23 +37,6 @@ interface TradingViewChartProps {
 }
 
 type MarkerFilterMode = 'triggers' | 'structure' | 'all' | 'clean';
-type BoxModelType = 'ensemble' | 'price_action' | 'volume_profile' | 'technical' | 'footprint';
-
-interface RiskRewardBoxCoords {
-  x: number;
-  width: number;
-  greenY: number;
-  greenH: number;
-  redY: number;
-  redH: number;
-  entryY: number;
-  tpPrice: number;
-  slPrice: number;
-  entryPrice: number;
-  dir: string;
-  rr: number;
-  modelName: string;
-}
 
 export default function TradingViewChart({
   candles,
@@ -71,10 +54,12 @@ export default function TradingViewChart({
   const ema200SeriesRef = useRef<ISeriesApi<'Line'> | null>(null);
 
   // Price lines refs
+  const tp2PriceLineRef = useRef<any>(null);
   const tpPriceLineRef = useRef<any>(null);
   const entryPriceLineRef = useRef<any>(null);
   const slPriceLineRef = useRef<any>(null);
   const currentPriceLineRef = useRef<any>(null);
+  const lastPriceUpdateRef = useRef<number>(0);
 
   // Timeframe and initial load tracking
   const initialLoadedRef = useRef<boolean>(false);
@@ -105,139 +90,12 @@ export default function TradingViewChart({
   // Overlay visibility toggles & anti-stacking filters
   const [showEMAs, setShowEMAs] = useState(true);
   const [showRRBoxes, setShowRRBoxes] = useState(true);
-  const [activeBoxModel, setActiveBoxModel] = useState<BoxModelType>('ensemble');
   const [markerFilter, setMarkerFilter] = useState<MarkerFilterMode>('triggers');
   const [showTfGuide, setShowTfGuide] = useState(false);
   const [isFullscreen, setIsFullscreen] = useState(false);
-  const [boxCoords, setBoxCoords] = useState<RiskRewardBoxCoords | null>(null);
 
   // Keep a ref of sortedData for coordinate computations
   const sortedDataRef = useRef<CandlestickData<Time>[]>([]);
-
-  // Compute Risk / Reward Green TP and Red SL Box coordinates
-  const updateBoxCoordinates = useCallback(() => {
-    if (!chartRef.current || !candleSeriesRef.current || !chartContainerRef.current) {
-      setBoxCoords(null);
-      return;
-    }
-
-    if (!showRRBoxes || !prediction) {
-      setBoxCoords(null);
-      return;
-    }
-
-    try {
-      // Determine the active setup from all_model_setups or fallback to main prediction
-      const setups: ModelSetupItem[] | undefined = prediction.contributing_features?.all_model_setups;
-      let setup: {
-        direction: string;
-        entry_price: number;
-        stop_loss: number;
-        take_profit: number;
-        risk_reward_ratio: number;
-        model_name: string;
-      };
-
-      if (setups && Array.isArray(setups) && setups.length > 0) {
-        const match = setups.find((s) => s.model_key === activeBoxModel) || setups[0];
-        setup = {
-          direction: match?.direction || prediction.direction || 'WAIT',
-          entry_price: typeof match?.entry_price === 'number' ? match.entry_price : (prediction.entry_reference_price || 0),
-          stop_loss: typeof match?.stop_loss === 'number' ? match.stop_loss : (prediction.stop_loss_reference || 0),
-          take_profit: typeof match?.take_profit === 'number' ? match.take_profit : (prediction.take_profit_reference || 0),
-          risk_reward_ratio: typeof match?.risk_reward_ratio === 'number' ? match.risk_reward_ratio : (prediction.risk_reward_ratio || 2.0),
-          model_name: match?.model_name ? match.model_name.split(':')[0] : 'Model',
-        };
-      } else {
-        setup = {
-          direction: prediction.direction || 'WAIT',
-          entry_price: prediction.entry_reference_price || 0,
-          stop_loss: prediction.stop_loss_reference || 0,
-          take_profit: prediction.take_profit_reference || 0,
-          risk_reward_ratio: prediction.risk_reward_ratio || 2.0,
-          model_name: 'Model E',
-        };
-      }
-
-      if (!setup.entry_price || !setup.take_profit || !setup.stop_loss) {
-        setBoxCoords(null);
-        return;
-      }
-
-      const entryY = candleSeriesRef.current.priceToCoordinate(setup.entry_price);
-      const tpY = candleSeriesRef.current.priceToCoordinate(setup.take_profit);
-      const slY = candleSeriesRef.current.priceToCoordinate(setup.stop_loss);
-
-      if (entryY === null || tpY === null || slY === null) {
-        setBoxCoords(null);
-        return;
-      }
-
-      const containerW = chartContainerRef.current.clientWidth;
-      const rightScaleW = 65;
-      const availW = containerW - rightScaleW;
-
-      const data = sortedDataRef.current;
-      const lastCandle = data.length > 0 ? data[data.length - 1] : null;
-
-      let startX: number | null = null;
-      if (lastCandle && chartRef.current) {
-        try {
-          startX = chartRef.current.timeScale().timeToCoordinate(lastCandle.time as Time);
-        } catch (e) {
-          startX = null;
-        }
-      }
-
-      if (startX === null || startX < 50 || startX > availW - 80) {
-        startX = Math.max(availW - 240, 60);
-      }
-
-      const boxW = Math.max(availW - startX, 130);
-
-      let greenY = 0;
-      let greenH = 0;
-      let redY = 0;
-      let redH = 0;
-
-      if (setup.direction === 'SELL') {
-        // SELL: Stop Loss is above entry (lower pixel Y), Take Profit is below entry (higher pixel Y)
-        redY = Math.min(slY, entryY);
-        redH = Math.max(Math.abs(entryY - slY), 6);
-        greenY = Math.min(entryY, tpY);
-        greenH = Math.max(Math.abs(tpY - entryY), 6);
-      } else {
-        // BUY or WAIT default: Take Profit is above entry (lower pixel Y), Stop Loss is below (higher pixel Y)
-        greenY = Math.min(tpY, entryY);
-        greenH = Math.max(Math.abs(entryY - tpY), 6);
-        redY = Math.min(entryY, slY);
-        redH = Math.max(Math.abs(slY - entryY), 6);
-      }
-
-      setBoxCoords({
-        x: startX,
-        width: boxW,
-        greenY,
-        greenH,
-        redY,
-        redH,
-        entryY,
-        tpPrice: setup.take_profit,
-        slPrice: setup.stop_loss,
-        entryPrice: setup.entry_price,
-        dir: setup.direction,
-        rr: setup.risk_reward_ratio,
-        modelName: setup.model_name,
-      });
-    } catch (err) {
-      setBoxCoords(null);
-    }
-  }, [showRRBoxes, prediction, activeBoxModel]);
-
-  const updateBoxCoordinatesRef = useRef(updateBoxCoordinates);
-  useEffect(() => {
-    updateBoxCoordinatesRef.current = updateBoxCoordinates;
-  });
 
   useEffect(() => {
     const timer = setTimeout(() => {
@@ -247,7 +105,6 @@ export default function TradingViewChart({
             width: chartContainerRef.current.clientWidth,
             height: chartContainerRef.current.clientHeight,
           });
-          updateBoxCoordinatesRef.current();
         } catch (e) {}
       }
     }, 60);
@@ -328,13 +185,6 @@ export default function TradingViewChart({
     ema50SeriesRef.current = ema50Series;
     ema200SeriesRef.current = ema200Series;
 
-    // Hook visible range changes to update SVG box coordinates
-    try {
-      chart.timeScale().subscribeVisibleLogicalRangeChange(() => {
-        updateBoxCoordinatesRef.current();
-      });
-    } catch (e) {}
-
     const handleResize = () => {
       if (chartContainerRef.current && chartRef.current) {
         try {
@@ -342,7 +192,6 @@ export default function TradingViewChart({
             width: chartContainerRef.current.clientWidth,
             height: chartContainerRef.current.clientHeight,
           });
-          updateBoxCoordinatesRef.current();
         } catch (e) {}
       }
     };
@@ -394,7 +243,7 @@ export default function TradingViewChart({
     const sortedData = Array.from(uniqueMap.values()).sort((a, b) => (a.time as number) - (b.time as number));
     sortedDataRef.current = sortedData;
 
-    // Only overwrite all chart candles if not yet loaded or when timeframe changes
+    // Overwrite or update chart candles
     if (!initialLoadedRef.current) {
       candleSeriesRef.current.setData(sortedData);
       initialLoadedRef.current = true;
@@ -413,6 +262,32 @@ export default function TradingViewChart({
         if (onPriceUpdate) {
           onPriceUpdate(last.close);
         }
+      }
+    } else if (sortedData.length > 0) {
+      // Live incoming candles from backend real-time feed:
+      const last = sortedData[sortedData.length - 1];
+      const prevActive = activeCandleRef.current;
+      if (!prevActive || (last.time as number) > prevActive.time) {
+        // New bar created or timeframe switch
+        candleSeriesRef.current.setData(sortedData);
+      } else {
+        // Update active bar with verified live price
+        try {
+          candleSeriesRef.current.update(last);
+        } catch (e) {
+          candleSeriesRef.current.setData(sortedData);
+        }
+      }
+      activeCandleRef.current = {
+        time: last.time as number,
+        open: last.open,
+        high: last.high,
+        low: last.low,
+        close: last.close,
+      };
+      setLivePrice(last.close);
+      if (onPriceUpdate) {
+        onPriceUpdate(last.close);
       }
     }
 
@@ -626,64 +501,73 @@ export default function TradingViewChart({
     }
 
     // =========================================================================
-    // PRICE LINES FOR TP, ENTRY, AND SL ON PRICE SCALE
+    // PRICE LINES ACROSS THE ENTIRE CHART: SL, ENTRY, TP1, AND TP2
     // =========================================================================
-    if (candleSeriesRef.current) {
-      try {
-        if (tpPriceLineRef.current) candleSeriesRef.current.removePriceLine(tpPriceLineRef.current);
-      } catch (e) {}
-      tpPriceLineRef.current = null;
-
-      try {
-        if (entryPriceLineRef.current) candleSeriesRef.current.removePriceLine(entryPriceLineRef.current);
-      } catch (e) {}
-      entryPriceLineRef.current = null;
-
-      try {
-        if (slPriceLineRef.current) candleSeriesRef.current.removePriceLine(slPriceLineRef.current);
-      } catch (e) {}
-      slPriceLineRef.current = null;
+    const activeSeries = candleSeriesRef.current;
+    if (activeSeries) {
+      [tp2PriceLineRef, tpPriceLineRef, entryPriceLineRef, slPriceLineRef].forEach((ref) => {
+        try {
+          if (ref.current) activeSeries.removePriceLine(ref.current);
+        } catch (e) {}
+        ref.current = null;
+      });
 
       if (showRRBoxes && prediction) {
         try {
-          const setups: ModelSetupItem[] | undefined = prediction.contributing_features?.all_model_setups;
-          const activeSetup = (Array.isArray(setups) && setups.find((s) => s.model_key === activeBoxModel)) || {
-            entry_price: prediction.entry_reference_price,
-            stop_loss: prediction.stop_loss_reference,
-            take_profit: prediction.take_profit_reference,
-            risk_reward_ratio: prediction.risk_reward_ratio,
-          };
+          const entryPrice = prediction.entry_reference_price;
+          const slPrice = prediction.stop_loss_reference;
+          const tp1Price = prediction.take_profit_reference;
+          const isLong = prediction.direction === 'BUY';
+          const rDist = Math.abs(entryPrice - slPrice);
+          const tp2Price =
+            prediction.take_profit_2 ||
+            (isLong ? Number((entryPrice + rDist * 2.4).toFixed(2)) : Number((entryPrice - rDist * 2.4).toFixed(2)));
 
-          if (typeof activeSetup?.take_profit === 'number' && !isNaN(activeSetup.take_profit)) {
-            tpPriceLineRef.current = candleSeriesRef.current.createPriceLine({
-              price: activeSetup.take_profit,
+          // 1. Take Profit 2 Line (Rich Emerald, Dotted, extends across full chart)
+          if (typeof tp2Price === 'number' && !isNaN(tp2Price) && tp2Price > 0) {
+            tp2PriceLineRef.current = activeSeries.createPriceLine({
+              price: tp2Price,
+              color: '#059669',
+              lineWidth: 2,
+              lineStyle: 1, // Dotted
+              axisLabelVisible: true,
+              title: `TP2 $${tp2Price.toFixed(2)} (+2.4R)`,
+            });
+          }
+
+          // 2. Take Profit 1 Line (Bright Emerald, Solid, extends across full chart)
+          if (typeof tp1Price === 'number' && !isNaN(tp1Price) && tp1Price > 0) {
+            tpPriceLineRef.current = activeSeries.createPriceLine({
+              price: tp1Price,
               color: '#10b981',
               lineWidth: 2,
-              lineStyle: 0,
+              lineStyle: 0, // Solid
               axisLabelVisible: true,
-              title: `TP $${activeSetup.take_profit.toFixed(2)}`,
+              title: `TP1 $${tp1Price.toFixed(2)} (+1.2R)`,
             });
           }
 
-          if (typeof activeSetup?.entry_price === 'number' && !isNaN(activeSetup.entry_price)) {
-            entryPriceLineRef.current = candleSeriesRef.current.createPriceLine({
-              price: activeSetup.entry_price,
+          // 3. Trade Entry Line (Vibrant Gold Amber, Dashed, extends across full chart)
+          if (typeof entryPrice === 'number' && !isNaN(entryPrice) && entryPrice > 0) {
+            entryPriceLineRef.current = activeSeries.createPriceLine({
+              price: entryPrice,
               color: '#f59e0b',
               lineWidth: 2,
-              lineStyle: 2,
+              lineStyle: 2, // Dashed
               axisLabelVisible: true,
-              title: `ENTRY $${activeSetup.entry_price.toFixed(2)}`,
+              title: `ENTRY $${entryPrice.toFixed(2)}`,
             });
           }
 
-          if (typeof activeSetup?.stop_loss === 'number' && !isNaN(activeSetup.stop_loss)) {
-            slPriceLineRef.current = candleSeriesRef.current.createPriceLine({
-              price: activeSetup.stop_loss,
+          // 4. Invalidation Stop Loss Line (Ruby Red, Solid, extends across full chart)
+          if (typeof slPrice === 'number' && !isNaN(slPrice) && slPrice > 0) {
+            slPriceLineRef.current = activeSeries.createPriceLine({
+              price: slPrice,
               color: '#ef4444',
               lineWidth: 2,
-              lineStyle: 0,
+              lineStyle: 0, // Solid
               axisLabelVisible: true,
-              title: `SL $${activeSetup.stop_loss.toFixed(2)}`,
+              title: `SL $${slPrice.toFixed(2)} (-1.0R)`,
             });
           }
         } catch (e) {}
@@ -692,14 +576,12 @@ export default function TradingViewChart({
       // =========================================================================
       // INSTITUTIONAL SMART RAILS: DAY OPEN, DYNAMIC VOL RAILS & ASIA POOL
       // =========================================================================
-      const series = candleSeriesRef.current;
-      if (series) {
-        [dayOpenLineRef, qraResLineRef, qraSupLineRef, asiaHighLineRef, asiaLowLineRef].forEach((ref) => {
-          try {
-            if (ref.current) series.removePriceLine(ref.current);
-          } catch (e) {}
-          ref.current = null;
-        });
+      [dayOpenLineRef, qraResLineRef, qraSupLineRef, asiaHighLineRef, asiaLowLineRef].forEach((ref) => {
+        try {
+          if (ref.current) activeSeries.removePriceLine(ref.current);
+        } catch (e) {}
+        ref.current = null;
+      });
 
         if (showSessionRails && sortedData.length > 0) {
           try {
@@ -729,7 +611,7 @@ export default function TradingViewChart({
             const qraSupport = dayOpenPrice - 2.5 * atrVal;
 
             // 1. Day Open Rail
-            dayOpenLineRef.current = series.createPriceLine({
+            dayOpenLineRef.current = activeSeries.createPriceLine({
               price: dayOpenPrice,
               color: '#f59e0b',
               lineWidth: 2,
@@ -739,7 +621,7 @@ export default function TradingViewChart({
             });
 
             // 2. QRA Rails
-            qraResLineRef.current = series.createPriceLine({
+            qraResLineRef.current = activeSeries.createPriceLine({
               price: qraResistance,
               color: '#06b6d4',
               lineWidth: 1,
@@ -747,7 +629,7 @@ export default function TradingViewChart({
               axisLabelVisible: true,
               title: `QRA RES $${qraResistance.toFixed(2)}`,
             });
-            qraSupLineRef.current = series.createPriceLine({
+            qraSupLineRef.current = activeSeries.createPriceLine({
               price: qraSupport,
               color: '#06b6d4',
               lineWidth: 1,
@@ -757,7 +639,7 @@ export default function TradingViewChart({
             });
 
             // 3. Asia Session Pool
-            asiaHighLineRef.current = series.createPriceLine({
+            asiaHighLineRef.current = activeSeries.createPriceLine({
               price: asiaHigh,
               color: '#c084fc',
               lineWidth: 1,
@@ -765,7 +647,7 @@ export default function TradingViewChart({
               axisLabelVisible: true,
               title: `ASIA HIGH $${asiaHigh.toFixed(2)}`,
             });
-            asiaLowLineRef.current = series.createPriceLine({
+            asiaLowLineRef.current = activeSeries.createPriceLine({
               price: asiaLow,
               color: '#c084fc',
               lineWidth: 1,
@@ -776,12 +658,7 @@ export default function TradingViewChart({
           } catch (e) {}
         }
       }
-    }
-
-    try {
-      updateBoxCoordinates();
-    } catch (e) {}
-  }, [candles, showEMAs, markerFilter, showRRBoxes, showSessionRails, activeBoxModel, features, prediction, updateBoxCoordinates]);
+  }, [candles, showEMAs, markerFilter, showRRBoxes, showSessionRails, features, prediction]);
 
   // Real-time live tick stream simulation loop (dynamic active candlestick movement)
   useEffect(() => {
@@ -865,7 +742,10 @@ export default function TradingViewChart({
       setLiveTickDelta(Number((newClose - active.open).toFixed(2)));
       setLiveTickDirection(newClose >= active.open ? 'up' : 'down');
 
-      if (onPriceUpdate) {
+      // Throttle onPriceUpdate to avoid constant re-rendering of parent React dashboard
+      const now = Date.now();
+      if (onPriceUpdate && now - lastPriceUpdateRef.current >= 4000) {
+        lastPriceUpdateRef.current = now;
         onPriceUpdate(newClose);
       }
     }, 1000);
@@ -961,8 +841,8 @@ export default function TradingViewChart({
 
         {/* Clean Display Filters & Tooling */}
         <div className="flex items-center space-x-3 text-xs">
-          {/* Risk/Reward TP/SL Box Toggle & Active Model Selector */}
-          <div className="flex items-center space-x-1.5 bg-dark-900 border border-dark-700 rounded px-2 py-1">
+          {/* Risk/Reward TP/SL Box Toggle & Pure AI Quant Model Indicator */}
+          <div className="flex items-center space-x-2 bg-dark-900 border border-dark-700 rounded px-2.5 py-1">
             <Target className="w-3.5 h-3.5 text-bull-400" />
             <label className="flex items-center space-x-1 cursor-pointer text-gray-200 font-semibold text-[11px]">
               <input
@@ -971,30 +851,14 @@ export default function TradingViewChart({
                 onChange={(e) => setShowRRBoxes(e.target.checked)}
                 className="rounded bg-dark-700 border-dark-600 text-gold-500 focus:ring-0 mr-1"
               />
-              <span>TP/SL Box:</span>
+              <span>AI Lines (SL / ENTRY / TP1 / TP2):</span>
             </label>
-            <select
-              value={activeBoxModel}
-              onChange={(e) => setActiveBoxModel(e.target.value as BoxModelType)}
-              disabled={!showRRBoxes}
-              className="bg-transparent text-gold-400 font-bold text-[11px] outline-none cursor-pointer disabled:opacity-40"
-            >
-              <option value="ensemble" className="bg-dark-900 text-white">
-                Model E (Ensemble +211%)
-              </option>
-              <option value="price_action" className="bg-dark-900 text-white">
-                Model D (PA Wick 51% WR)
-              </option>
-              <option value="volume_profile" className="bg-dark-900 text-white">
-                Model F (Vol Profile 51.5% WR)
-              </option>
-              <option value="technical" className="bg-dark-900 text-white">
-                Model A (Technical Momentum)
-              </option>
-              <option value="footprint" className="bg-dark-900 text-white">
-                Model G (Footprint Delta)
-              </option>
-            </select>
+            <div className="flex items-center space-x-1 bg-gold-500/10 border border-gold-500/30 rounded px-1.5 py-0.5">
+              <Sparkles className="w-3 h-3 text-gold-400" />
+              <span className="text-gold-400 font-mono font-bold text-[10px]">
+                Model E Quant (+211% Net)
+              </span>
+            </div>
           </div>
 
           {/* Anti-Stacking Marker Filter Selector */}
@@ -1243,79 +1107,6 @@ export default function TradingViewChart({
             {liveTickDelta >= 0 ? `+${liveTickDelta.toFixed(2)}` : liveTickDelta.toFixed(2)}
           </span>
         </div>
-
-        {/* ========================================================================= */}
-        {/* VISUAL SHADED RISK/REWARD RECTANGLES (GREEN TP BOX & RED SL BOX)          */}
-        {/* ========================================================================= */}
-        {showRRBoxes && boxCoords && (
-          <svg className="absolute inset-0 pointer-events-none w-full h-full z-10 overflow-hidden">
-            {/* Green Take Profit Rectangle */}
-            <rect
-              x={boxCoords.x}
-              y={boxCoords.greenY}
-              width={boxCoords.width}
-              height={boxCoords.greenH}
-              fill="rgba(16, 185, 129, 0.20)"
-              stroke="#10b981"
-              strokeWidth="1.5"
-              strokeDasharray="4 2"
-              rx="2"
-            />
-            {/* Green TP Banner Tag */}
-            <g transform={`translate(${boxCoords.x + 8}, ${Math.max(boxCoords.greenY + 16, 18)})`}>
-              <rect x="0" y="-12" width="168" height="18" rx="3" fill="#064e3b" stroke="#10b981" strokeWidth="1" />
-              <text x="6" y="1" fill="#34d399" fontSize="11" fontWeight="bold" fontFamily="monospace">
-                🎯 TP ${boxCoords.tpPrice.toFixed(2)} (+{boxCoords.rr}R)
-              </text>
-            </g>
-
-            {/* Red Stop Loss Rectangle */}
-            <rect
-              x={boxCoords.x}
-              y={boxCoords.redY}
-              width={boxCoords.width}
-              height={boxCoords.redH}
-              fill="rgba(239, 68, 68, 0.20)"
-              stroke="#ef4444"
-              strokeWidth="1.5"
-              strokeDasharray="4 2"
-              rx="2"
-            />
-            {/* Red SL Banner Tag */}
-            <g transform={`translate(${boxCoords.x + 8}, ${Math.min(boxCoords.redY + boxCoords.redH - 6, boxCoords.redY + 16)})`}>
-              <rect x="0" y="-12" width="168" height="18" rx="3" fill="#7f1d1d" stroke="#ef4444" strokeWidth="1" />
-              <text x="6" y="1" fill="#f87171" fontSize="11" fontWeight="bold" fontFamily="monospace">
-                🛡️ SL ${boxCoords.slPrice.toFixed(2)} (-1.0R)
-              </text>
-            </g>
-
-            {/* Entry Divider Line */}
-            <line
-              x1={boxCoords.x}
-              y1={boxCoords.entryY}
-              x2={boxCoords.x + boxCoords.width}
-              y2={boxCoords.entryY}
-              stroke="#f59e0b"
-              strokeWidth="2"
-              strokeDasharray="4 3"
-            />
-            {/* Entry Banner Tag */}
-            <g transform={`translate(${boxCoords.x + 8}, ${boxCoords.entryY + 4})`}>
-              <rect x="0" y="-10" width="144" height="18" rx="3" fill="#78350f" stroke="#f59e0b" strokeWidth="1" />
-              <text x="6" y="3" fill="#fde68a" fontSize="11" fontWeight="bold" fontFamily="monospace">
-                ⚡ ENTRY ${boxCoords.entryPrice.toFixed(2)}
-              </text>
-            </g>
-
-            {/* Model Name Floating Badge */}
-            <g transform={`translate(${boxCoords.x + boxCoords.width - 95}, ${Math.min(boxCoords.greenY, boxCoords.redY) - 6})`}>
-              <rect x="0" y="-10" width="90" height="15" rx="3" fill="#1e293b" stroke="#475569" strokeWidth="1" />
-              <text x="5" y="1" fill="#94a3b8" fontSize="9" fontWeight="bold" fontFamily="sans-serif">
-                {boxCoords.modelName}
-              </text>
-            </g>
-          </svg>
-        )}
       </div>
     </div>
   );

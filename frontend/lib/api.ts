@@ -98,9 +98,14 @@ export interface PredictionResponse {
   entry_reference_price: number;
   stop_loss_reference: number;
   take_profit_reference: number;
+  take_profit_2?: number;
   risk_reward_ratio: number;
   model_version: string;
   contributing_features: {
+    tp1?: number;
+    tp2?: number;
+    sl?: number;
+    entry?: number;
     top_technical_drivers?: string[];
     top_smc_drivers?: string[];
     active_ict_setups?: string[];

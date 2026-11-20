@@ -19,6 +19,82 @@ from src.data.storage import ParquetStorage
 
 router = APIRouter(prefix="/api/market", tags=["Market Data"])
 
+_LIVE_CACHE: Dict[str, Any] = {}
+_LIVE_CACHE_TTL = 4  # 4 seconds in-memory cache
+
+
+def fetch_live_yahoo_gold_candles(
+    timeframe: str = "M5", limit: int = 500
+) -> Optional[List[CandleItem]]:
+    """Fetch real-time Gold (GC=F) candlestick feed directly from Yahoo Finance."""
+    import json
+    import time
+    import urllib.request
+
+    now = time.time()
+    tf_upper = timeframe.upper()
+    cache_key = f"{tf_upper}_{limit}"
+    if cache_key in _LIVE_CACHE:
+        cached_time, cached_data = _LIVE_CACHE[cache_key]
+        if now - cached_time < _LIVE_CACHE_TTL:
+            return cached_data
+
+    tf_map = {
+        "M1": ("1m", "1d"),
+        "M5": ("5m", "5d"),
+        "M15": ("15m", "10d"),
+        "H1": ("1h", "1mo"),
+    }
+    interval, rng = tf_map.get(tf_upper, ("5m", "5d"))
+    url = f"https://query1.finance.yahoo.com/v8/finance/chart/GC=F?interval={interval}&range={rng}"
+    req = urllib.request.Request(
+        url,
+        headers={"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"},
+    )
+
+    try:
+        with urllib.request.urlopen(req, timeout=4) as resp:
+            data = json.loads(resp.read().decode())
+        res = data["chart"]["result"][0]
+        ts_list = res.get("timestamp", [])
+        q = res["indicators"]["quote"][0]
+        opens = q.get("open", [])
+        highs = q.get("high", [])
+        lows = q.get("low", [])
+        closes = q.get("close", [])
+        vols = q.get("volume", [])
+
+        candles: List[CandleItem] = []
+        for i in range(len(ts_list)):
+            t = ts_list[i]
+            o = opens[i]
+            h = highs[i]
+            l = lows[i]
+            c = closes[i]
+            v = vols[i] if vols and i < len(vols) else 0.0
+            if o is None or h is None or l is None or c is None:
+                continue
+            candles.append(
+                CandleItem(
+                    timestamp=int(t),
+                    open=round(float(o), 2),
+                    high=round(float(h), 2),
+                    low=round(float(l), 2),
+                    close=round(float(c), 2),
+                    volume=float(v or 0.0),
+                    instrument="XAUUSD",
+                    timeframe=tf_upper,
+                )
+            )
+
+        if candles:
+            result = candles[-limit:]
+            _LIVE_CACHE[cache_key] = (now, result)
+            return result
+    except Exception:
+        pass
+    return None
+
 
 @router.get("/status")
 def get_market_status(
@@ -27,7 +103,19 @@ def get_market_status(
     """Retrieve official global market session status (Open/Closed), UTC schedule, and data origin."""
     from src.live.feed import LiveMarketFeed
     feed = LiveMarketFeed()
-    return feed.get_market_status(instrument)
+    status = feed.get_market_status(instrument)
+
+    # Enrich with live COMEX Gold market price if available
+    live_candles = fetch_live_yahoo_gold_candles(timeframe="M5", limit=5)
+    if live_candles and len(live_candles) > 0:
+        latest_c = live_candles[-1]
+        status["latest_available_price"] = latest_c.close
+        status["latest_candle_time_utc"] = pd.to_datetime(
+            latest_c.timestamp, unit="s", utc=True
+        ).strftime("%Y-%m-%d %H:%M:%S UTC")
+        status["data_source_mode"] = "LIVE_COMEX_FEED"
+
+    return status
 
 
 @router.get("/candles", response_model=CandlesResponse)
@@ -45,6 +133,18 @@ def get_candles(
     except ValueError:
         raise HTTPException(status_code=400, detail=f"Unsupported timeframe '{timeframe}'. Use M5, M15, or H1.")
 
+    # 1. First attempt to serve real-time live COMEX Gold candles for active live charting
+    if start is None and end is None and instrument.upper() in ["XAUUSD", "GOLD", "GC=F"]:
+        live_candles = fetch_live_yahoo_gold_candles(timeframe=tf_enum.value.upper(), limit=limit)
+        if live_candles and len(live_candles) > 0:
+            return CandlesResponse(
+                instrument=instrument.upper(),
+                timeframe=tf_enum.value.upper(),
+                count=len(live_candles),
+                candles=live_candles,
+            )
+
+    # 2. Historical or offline fallback
     df = storage.load_candles(timeframe=tf_enum, instrument=instrument.upper(), is_processed=True)
     if df.empty:
         # Fall back to raw if processed not yet created for this timeframe

@@ -57,6 +57,7 @@ class PredictionResponse(BaseModel):
     entry_reference_price: float
     stop_loss_reference: float
     take_profit_reference: float
+    take_profit_2: Optional[float] = None
     risk_reward_ratio: float
     model_version: str
     contributing_features: Dict[str, Any]

@@ -34,10 +34,11 @@ class TradePrediction:
     market_regime: str                 # "Ranging", "Bullish_Trend", "Bearish_Trend", etc.
     entry_reference_price: float       # Reference current market price
     stop_loss_reference: float         # Structural / Volatility Stop-Loss level
-    take_profit_reference: float       # Take-Profit level
-    risk_reward_ratio: float           # Target Risk/Reward multiple (e.g. 2.0)
+    take_profit_reference: float       # Take-Profit level (TP1)
+    risk_reward_ratio: float           # Target Risk/Reward multiple (e.g. 1.2)
     model_version: str                 # Version string
     contributing_features: Dict[str, Any]
+    take_profit_2: Optional[float] = None  # Extended Target (TP2, 2.4 RR)
 
     def to_dict(self) -> Dict[str, Any]:
         return asdict(self)
@@ -63,6 +64,7 @@ class PredictionEngine:
         candle_features: pd.DataFrame,
         instrument: str = DEFAULT_INSTRUMENT,
         timeframe: str = Timeframe.M5.value,
+        live_price: Optional[float] = None,
     ) -> TradePrediction:
         """Generate prediction and trading levels for the latest candle."""
         if candle_features.empty:
@@ -80,7 +82,7 @@ class PredictionEngine:
         p_bull = float(prob[2])
 
         ts = int(latest_row["timestamp"].iloc[0])
-        entry_price = float(latest_row["close"].iloc[0])
+        entry_price = float(live_price) if (live_price is not None and live_price > 0) else float(latest_row["close"].iloc[0])
 
         # ATR for dynamic risk levels
         if "atr_14" in latest_row.columns:
@@ -90,18 +92,22 @@ class PredictionEngine:
         if np.isnan(atr) or atr <= 0:
             atr = 2.0  # safe default for gold ($2.00)
 
-        sl_distance = self.sl_atr_multiplier * atr
-        tp_distance = sl_distance * self.default_rr_ratio
+        sl_distance = round(self.sl_atr_multiplier * atr, 2)
+        tp1_distance = round(sl_distance * self.default_rr_ratio, 2)
+        tp2_distance = round(sl_distance * (self.default_rr_ratio * 2.0), 2)
 
         if decision == "BUY":
-            stop_loss = round(entry_price - sl_distance, 3)
-            take_profit = round(entry_price + tp_distance, 3)
+            stop_loss = round(entry_price - sl_distance, 2)
+            take_profit = round(entry_price + tp1_distance, 2)
+            take_profit_2 = round(entry_price + tp2_distance, 2)
         elif decision == "SELL":
-            stop_loss = round(entry_price + sl_distance, 3)
-            take_profit = round(entry_price - tp_distance, 3)
+            stop_loss = round(entry_price + sl_distance, 2)
+            take_profit = round(entry_price - tp1_distance, 2)
+            take_profit_2 = round(entry_price - tp2_distance, 2)
         else:  # WAIT
-            stop_loss = round(entry_price - sl_distance, 3)
-            take_profit = round(entry_price + tp_distance, 3)
+            stop_loss = round(entry_price - sl_distance, 2)
+            take_profit = round(entry_price + tp1_distance, 2)
+            take_profit_2 = round(entry_price + tp2_distance, 2)
 
         regime_label = str(latest_row.get("regime_label", pd.Series(["Neutral"])).iloc[0])
 
@@ -473,6 +479,11 @@ class PredictionEngine:
             "top_smc_drivers": top_smc,
             "active_ict_setups": ict_setups,
             "all_model_setups": all_setups,
+            "take_profit_2": take_profit_2,
+            "tp1": take_profit,
+            "tp2": take_profit_2,
+            "sl": stop_loss,
+            "entry": round(entry_price, 2),
             "submodel_agreement": {
                 "tech_prediction": sub_tech,
                 "smc_prediction": sub_smc,
@@ -492,9 +503,10 @@ class PredictionEngine:
             neutral_probability=round(p_neut, 4),
             confidence=round(conf, 4),
             market_regime=regime_label,
-            entry_reference_price=round(entry_price, 3),
+            entry_reference_price=round(entry_price, 2),
             stop_loss_reference=stop_loss,
             take_profit_reference=take_profit,
+            take_profit_2=take_profit_2,
             risk_reward_ratio=self.default_rr_ratio,
             model_version=self.model_version,
             contributing_features=contributing,

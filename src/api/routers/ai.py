@@ -62,10 +62,16 @@ def get_prediction(
         raise HTTPException(status_code=404, detail="Features matrix is empty.")
 
     engine: PredictionEngine = get_prediction_engine(version)
+    from src.api.routers.market import fetch_live_yahoo_gold_candles
+    live_candles = fetch_live_yahoo_gold_candles(timeframe=timeframe, limit=2)
+    # Anchor the signal entry to the CURRENT BAR'S OPEN price so levels stay locked across the chart
+    signal_anchor_price = live_candles[-1].open if (live_candles and len(live_candles) > 0) else None
+
     pred = engine.predict_candle(
         candle_features=df_feats,
         instrument=instrument.upper(),
         timeframe=timeframe.upper(),
+        live_price=signal_anchor_price,
     )
 
     return PredictionResponse(**pred.to_dict())
