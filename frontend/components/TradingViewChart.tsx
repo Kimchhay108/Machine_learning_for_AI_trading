@@ -512,7 +512,7 @@ export default function TradingViewChart({
         ref.current = null;
       });
 
-      if (showRRBoxes && prediction) {
+      if (showRRBoxes && prediction && prediction.direction !== 'WAIT') {
         try {
           const entryPrice = prediction.entry_reference_price;
           const slPrice = prediction.stop_loss_reference;
@@ -523,15 +523,26 @@ export default function TradingViewChart({
             prediction.take_profit_2 ||
             (isLong ? Number((entryPrice + rDist * 2.4).toFixed(2)) : Number((entryPrice - rDist * 2.4).toFixed(2)));
 
+          const status = prediction.signal_status || 'ACTIVE';
+          const tp1Title = status === 'TP1_HIT' || status === 'TP2_HIT'
+            ? `✓ TP1 BANKED $${tp1Price.toFixed(2)} (+1.2R)`
+            : `TP1 $${tp1Price.toFixed(2)} (+1.2R)`;
+          const tp2Title = status === 'TP2_HIT'
+            ? `🎯 TP2 HIT $${tp2Price.toFixed(2)} (+2.4R)`
+            : `TP2 $${tp2Price.toFixed(2)} (+2.4R)`;
+          const slTitle = status === 'STOPPED_OUT'
+            ? `🔴 STOPPED OUT $${slPrice.toFixed(2)} (-1.0R)`
+            : `SL $${slPrice.toFixed(2)} (-1.0R)`;
+
           // 1. Take Profit 2 Line (Rich Emerald, Dotted, extends across full chart)
           if (typeof tp2Price === 'number' && !isNaN(tp2Price) && tp2Price > 0) {
             tp2PriceLineRef.current = activeSeries.createPriceLine({
               price: tp2Price,
-              color: '#059669',
+              color: status === 'TP2_HIT' ? '#10b981' : '#059669',
               lineWidth: 2,
               lineStyle: 1, // Dotted
               axisLabelVisible: true,
-              title: `TP2 $${tp2Price.toFixed(2)} (+2.4R)`,
+              title: tp2Title,
             });
           }
 
@@ -543,7 +554,7 @@ export default function TradingViewChart({
               lineWidth: 2,
               lineStyle: 0, // Solid
               axisLabelVisible: true,
-              title: `TP1 $${tp1Price.toFixed(2)} (+1.2R)`,
+              title: tp1Title,
             });
           }
 
@@ -555,7 +566,7 @@ export default function TradingViewChart({
               lineWidth: 2,
               lineStyle: 2, // Dashed
               axisLabelVisible: true,
-              title: `ENTRY $${entryPrice.toFixed(2)}`,
+              title: `ENTRY $${entryPrice.toFixed(2)} [LOCKED]`,
             });
           }
 
@@ -567,7 +578,7 @@ export default function TradingViewChart({
               lineWidth: 2,
               lineStyle: 0, // Solid
               axisLabelVisible: true,
-              title: `SL $${slPrice.toFixed(2)} (-1.0R)`,
+              title: slTitle,
             });
           }
         } catch (e) {}

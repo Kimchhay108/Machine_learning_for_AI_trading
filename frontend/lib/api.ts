@@ -118,6 +118,10 @@ export interface PredictionResponse {
       footprint_prediction?: number;
     };
   };
+  signal_status?: 'ACTIVE' | 'TP1_HIT' | 'TP2_HIT' | 'STOPPED_OUT' | 'EXPIRED' | 'WAITING';
+  current_r_multiple?: number;
+  is_setup_locked?: boolean;
+  setup_id?: string;
 }
 
 export interface ModelInfo {
@@ -283,6 +287,14 @@ export async function fetchMarketFeatures(instrument: string = 'XAUUSD', timefra
 export async function fetchAIPrediction(instrument: string = 'XAUUSD', timeframe: string = 'M5'): Promise<PredictionResponse> {
   const res = await fetch(`${API_BASE}/api/ai/prediction?instrument=${instrument}&timeframe=${timeframe}`);
   if (!res.ok) throw new Error(`Prediction fetch failed: ${res.statusText}`);
+  return res.json();
+}
+
+export async function resetAISignal(instrument: string = 'XAUUSD', timeframe: string = 'M5'): Promise<{ status: string; message: string }> {
+  const res = await fetch(`${API_BASE}/api/ai/signal/reset?instrument=${instrument}&timeframe=${timeframe}`, {
+    method: 'POST',
+  });
+  if (!res.ok) throw new Error(`Signal reset failed: ${res.statusText}`);
   return res.json();
 }
 

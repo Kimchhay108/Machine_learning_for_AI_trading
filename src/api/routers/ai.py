@@ -44,8 +44,9 @@ def get_prediction(
     instrument: str = Query(DEFAULT_INSTRUMENT, description="Trading instrument"),
     timeframe: str = Query("M5", description="Timeframe"),
     version: Optional[str] = Query(None, description="Model version (defaults to active)"),
+    force_reset: bool = Query(False, description="Force reset and re-evaluate active setup"),
 ) -> PredictionResponse:
-    """Generate live AI trading prediction and dynamic ATR-based risk levels for the latest candle."""
+    """Generate live AI trading prediction with stationary locked risk levels and real-time lifecycle tracking."""
     tf_clean = (timeframe or "M5").lower().strip()
     feat_path = settings.FEATURES_DIR / instrument.lower() / f"{tf_clean}_features.parquet"
     if not feat_path.exists():
@@ -61,20 +62,112 @@ def get_prediction(
     if df_feats.empty:
         raise HTTPException(status_code=404, detail="Features matrix is empty.")
 
-    engine: PredictionEngine = get_prediction_engine(version)
     from src.api.routers.market import fetch_live_yahoo_gold_candles
-    live_candles = fetch_live_yahoo_gold_candles(timeframe=timeframe, limit=2)
-    # Anchor the signal entry to the CURRENT BAR'S OPEN price so levels stay locked across the chart
-    signal_anchor_price = live_candles[-1].open if (live_candles and len(live_candles) > 0) else None
+    from src.live.signal_manager import get_signal_manager
 
+    signal_manager = get_signal_manager()
+    if force_reset:
+        signal_manager.reset_signal(instrument, timeframe)
+
+    live_candles = fetch_live_yahoo_gold_candles(timeframe=timeframe, limit=2)
+    latest_c = live_candles[-1] if (live_candles and len(live_candles) > 0) else None
+    current_price = latest_c.close if latest_c else float(df_feats["close"].iloc[-1])
+    c_high = latest_c.high if latest_c else current_price
+    c_low = latest_c.low if latest_c else current_price
+
+    # 1. Check if we already have an active locked trade setup
+    active_state = signal_manager.get_signal(
+        instrument=instrument,
+        timeframe=timeframe,
+        current_price=current_price,
+        candle_high=c_high,
+        candle_low=c_low,
+    )
+
+    if active_state and active_state.signal_status in ("ACTIVE", "TP1_HIT"):
+        # Setup is locked: levels remain 100% stationary across the chart!
+        return PredictionResponse(
+            instrument=active_state.instrument,
+            timeframe=active_state.timeframe,
+            prediction_timestamp=active_state.prediction_timestamp,
+            direction=active_state.direction,
+            bullish_probability=active_state.bullish_probability,
+            bearish_probability=active_state.bearish_probability,
+            neutral_probability=active_state.neutral_probability,
+            confidence=active_state.confidence,
+            market_regime=active_state.market_regime,
+            entry_reference_price=active_state.entry_reference_price,
+            stop_loss_reference=active_state.stop_loss_reference,
+            take_profit_reference=active_state.take_profit_reference,
+            take_profit_2=active_state.take_profit_2,
+            risk_reward_ratio=active_state.risk_reward_ratio,
+            model_version=active_state.model_version,
+            contributing_features=active_state.contributing_features,
+            signal_status=active_state.signal_status,
+            current_r_multiple=active_state.current_r_multiple,
+            is_setup_locked=True,
+            setup_id=active_state.setup_id,
+        )
+
+    # 2. No active trade running (or previous completed/stopped out): evaluate AI model
+    engine: PredictionEngine = get_prediction_engine(version)
     pred = engine.predict_candle(
         candle_features=df_feats,
         instrument=instrument.upper(),
         timeframe=timeframe.upper(),
-        live_price=signal_anchor_price,
+        live_price=current_price,
     )
 
-    return PredictionResponse(**pred.to_dict())
+    # 3. If AI triggers a valid trade setup (BUY or SELL with >= 50% confidence), lock it in!
+    if pred.direction in ("BUY", "SELL") and pred.confidence >= 0.50:
+        locked_state = signal_manager.lock_new_signal(
+            prediction=pred,
+            instrument=instrument,
+            timeframe=timeframe,
+            live_price=current_price,
+        )
+        return PredictionResponse(
+            instrument=locked_state.instrument,
+            timeframe=locked_state.timeframe,
+            prediction_timestamp=locked_state.prediction_timestamp,
+            direction=locked_state.direction,
+            bullish_probability=locked_state.bullish_probability,
+            bearish_probability=locked_state.bearish_probability,
+            neutral_probability=locked_state.neutral_probability,
+            confidence=locked_state.confidence,
+            market_regime=locked_state.market_regime,
+            entry_reference_price=locked_state.entry_reference_price,
+            stop_loss_reference=locked_state.stop_loss_reference,
+            take_profit_reference=locked_state.take_profit_reference,
+            take_profit_2=locked_state.take_profit_2,
+            risk_reward_ratio=locked_state.risk_reward_ratio,
+            model_version=locked_state.model_version,
+            contributing_features=locked_state.contributing_features,
+            signal_status="ACTIVE",
+            current_r_multiple=0.0,
+            is_setup_locked=True,
+            setup_id=locked_state.setup_id,
+        )
+
+    # 4. Market is in WAIT / Observation mode (no locked trade)
+    pred_dict = pred.to_dict()
+    pred_dict["signal_status"] = "WAITING"
+    pred_dict["current_r_multiple"] = 0.0
+    pred_dict["is_setup_locked"] = False
+    pred_dict["setup_id"] = None
+    return PredictionResponse(**pred_dict)
+
+
+@router.post("/signal/reset")
+def reset_signal(
+    instrument: str = Query(DEFAULT_INSTRUMENT, description="Trading instrument"),
+    timeframe: str = Query("M5", description="Timeframe"),
+) -> Dict[str, Any]:
+    """Manually clear/reset the active locked AI trade setup to scan for a new entry."""
+    from src.live.signal_manager import get_signal_manager
+    manager = get_signal_manager()
+    manager.reset_signal(instrument, timeframe)
+    return {"status": "RESET", "message": f"Active AI signal setup for {instrument} {timeframe} has been reset."}
 
 
 @router.get("/models", response_model=ModelsListResponse)

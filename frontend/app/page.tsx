@@ -275,6 +275,7 @@ export default function DashboardPage() {
                 prediction={prediction}
                 loading={loading}
                 onTradeExecuted={() => loadData(timeframe)}
+                onSignalReset={() => loadData(timeframe, true)}
               />
             </div>
           </div>

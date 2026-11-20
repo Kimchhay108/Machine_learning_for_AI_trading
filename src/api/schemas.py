@@ -61,6 +61,10 @@ class PredictionResponse(BaseModel):
     risk_reward_ratio: float
     model_version: str
     contributing_features: Dict[str, Any]
+    signal_status: Optional[str] = "ACTIVE"
+    current_r_multiple: Optional[float] = 0.0
+    is_setup_locked: Optional[bool] = True
+    setup_id: Optional[str] = None
 
 
 class ModelInfo(BaseModel):

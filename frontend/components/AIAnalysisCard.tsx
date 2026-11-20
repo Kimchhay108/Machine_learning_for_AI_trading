@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useState } from 'react';
-import { PredictionResponse, triggerPaperTick } from '../lib/api';
+import { PredictionResponse, triggerPaperTick, resetAISignal } from '../lib/api';
 import {
   TrendingUp,
   TrendingDown,
@@ -14,16 +14,19 @@ import {
   AlertTriangle,
   Lock,
   ArrowRight,
+  RotateCcw,
 } from 'lucide-react';
 
 interface AIAnalysisCardProps {
   prediction: PredictionResponse | null;
   loading?: boolean;
   onTradeExecuted?: () => void;
+  onSignalReset?: () => void;
 }
 
-export default function AIAnalysisCard({ prediction, loading, onTradeExecuted }: AIAnalysisCardProps) {
+export default function AIAnalysisCard({ prediction, loading, onTradeExecuted, onSignalReset }: AIAnalysisCardProps) {
   const [executing, setExecuting] = useState(false);
+  const [resetting, setResetting] = useState(false);
   const [executeMsg, setExecuteMsg] = useState<string | null>(null);
 
   if (loading || !prediction) {
@@ -49,6 +52,9 @@ export default function AIAnalysisCard({ prediction, loading, onTradeExecuted }:
     take_profit_2,
     risk_reward_ratio,
     model_version,
+    signal_status,
+    current_r_multiple = 0.0,
+    is_setup_locked = true,
   } = prediction;
 
   const isBuy = direction === 'BUY';
@@ -66,6 +72,21 @@ export default function AIAnalysisCard({ prediction, loading, onTradeExecuted }:
     take_profit_2 ||
     (isBuy ? entry_reference_price + riskDist * 2.4 : entry_reference_price - riskDist * 2.4);
   const reward2Dist = Math.abs(tp2Val - entry_reference_price);
+
+  const handleResetSignal = async () => {
+    setResetting(true);
+    setExecuteMsg(null);
+    try {
+      await resetAISignal('XAUUSD', prediction.timeframe);
+      setExecuteMsg('Active trade setup reset. Scanning for fresh confluence...');
+      if (onSignalReset) onSignalReset();
+      else if (onTradeExecuted) onTradeExecuted();
+    } catch (e: any) {
+      setExecuteMsg(`Reset signal notice: ${e.message || 'Complete'}`);
+    } finally {
+      setResetting(false);
+    }
+  };
 
   // Recommended position sizing for standard $10,000 balance with 1.0% risk ($100 risk budget)
   const riskBudget = 100; // $100
@@ -100,14 +121,58 @@ export default function AIAnalysisCard({ prediction, loading, onTradeExecuted }:
               Institutional AI Signal
             </h2>
             <span className="text-[10px] text-gray-400 block font-mono">
-              Model E • Calibrated Deep Quant Ensemble
+              Model E • Stationary Target Lock
             </span>
           </div>
         </div>
-        <span className="text-[11px] bg-dark-800 text-gold-400 px-2.5 py-0.5 rounded-full border border-dark-700 font-mono font-semibold">
-          {model_version || 'v1.2.1'}
-        </span>
+        <div className="flex items-center space-x-2">
+          <button
+            onClick={handleResetSignal}
+            disabled={resetting}
+            title="Clear and scan for a fresh setup"
+            className="text-[10px] bg-dark-800 hover:bg-dark-750 text-gray-300 hover:text-white px-2 py-1 rounded border border-dark-700 flex items-center space-x-1 transition-colors"
+          >
+            <RotateCcw className={`w-3 h-3 ${resetting ? 'animate-spin text-gold-400' : ''}`} />
+            <span>Reset Setup</span>
+          </button>
+          <span className="text-[11px] bg-dark-800 text-gold-400 px-2.5 py-0.5 rounded-full border border-dark-700 font-mono font-semibold">
+            {model_version || 'v1.2.1'}
+          </span>
+        </div>
       </div>
+
+      {/* Setup Status Banner (Stationary / Tracking) */}
+      {!isWait && (
+        <div
+          className={`px-3 py-2 rounded-lg border flex items-center justify-between text-xs font-mono ${
+            signal_status === 'TP2_HIT'
+              ? 'bg-emerald-950/40 border-emerald-500/40 text-emerald-300'
+              : signal_status === 'TP1_HIT'
+              ? 'bg-teal-950/40 border-teal-500/40 text-teal-300'
+              : signal_status === 'STOPPED_OUT'
+              ? 'bg-red-950/40 border-red-500/40 text-red-300'
+              : 'bg-dark-800/80 border-gold-500/30 text-gold-300'
+          }`}
+        >
+          <div className="flex items-center space-x-2">
+            <Lock className="w-3.5 h-3.5 text-gold-400 shrink-0" />
+            <span className="font-bold">
+              {signal_status === 'TP2_HIT'
+                ? '🎯 TP2 HIT (+2.4R FULL TARGET WON)'
+                : signal_status === 'TP1_HIT'
+                ? '💎 TP1 BANKED (+1.2R LOCKED) • RUNNER TO TP2'
+                : signal_status === 'STOPPED_OUT'
+                ? '🔴 STOPPED OUT (-1.0R INVALIDATED)'
+                : '🔒 SETUP LOCKED • LEVELS STATIONARY'}
+            </span>
+          </div>
+          <span className="font-bold">
+            {signal_status === 'ACTIVE'
+              ? `Floating: ${current_r_multiple >= 0 ? '+' : ''}${current_r_multiple.toFixed(2)}R`
+              : signal_status}
+          </span>
+        </div>
+      )}
 
       {/* Main High-Conviction Recommendation Badge */}
       <div
