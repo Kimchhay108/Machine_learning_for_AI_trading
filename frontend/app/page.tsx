@@ -15,15 +15,18 @@ import {
 } from '../lib/api';
 import TradingViewChart from '../components/TradingViewChart';
 import AIAnalysisCard from '../components/AIAnalysisCard';
+import AIChatCopilot from '../components/AIChatCopilot';
 import BacktestLab from '../components/BacktestLab';
 import PaperTradingView from '../components/PaperTradingView';
 import SettingsView from '../components/SettingsView';
 import {
   Activity,
   BarChart3,
+  Bot,
   Clock,
   Layers,
   LineChart,
+  MessageSquare,
   RefreshCw,
   Settings,
   Shield,
@@ -33,7 +36,7 @@ import {
   Zap,
 } from 'lucide-react';
 
-type TabType = 'terminal' | 'backtest' | 'paper' | 'settings';
+type TabType = 'terminal' | 'chat' | 'backtest' | 'paper' | 'settings';
 
 export default function DashboardPage() {
   const [activeTab, setActiveTab] = useState<TabType>('terminal');
@@ -228,13 +231,14 @@ export default function DashboardPage() {
         </div>
       </header>
 
-      {/* Streamlined 4-Tab Navigation */}
+      {/* Streamlined 5-Tab Navigation */}
       <nav className="bg-dark-850 border-b border-dark-700 px-5 py-1.5 flex space-x-1 overflow-x-auto">
         {[
           { id: 'terminal', label: '1. Live AI Terminal', icon: Zap },
-          { id: 'backtest', label: '2. AI Quant Lab & Backtest', icon: BarChart3 },
-          { id: 'paper', label: '3. Paper Trading', icon: Wallet },
-          { id: 'settings', label: '4. Risk & Settings', icon: Settings },
+          { id: 'chat', label: '2. 💬 AI Copilot & Chart Chat', icon: Bot },
+          { id: 'backtest', label: '3. AI Quant Lab & Backtest', icon: BarChart3 },
+          { id: 'paper', label: '4. Paper Trading', icon: Wallet },
+          { id: 'settings', label: '5. Risk & Settings', icon: Settings },
         ].map((tab) => {
           const Icon = tab.icon;
           const isActive = activeTab === tab.id;
@@ -271,6 +275,20 @@ export default function DashboardPage() {
               />
             </div>
             <div className="lg:col-span-4 xl:col-span-3 space-y-3.5 overflow-y-auto max-h-[calc(100vh-175px)]">
+              {/* Quick switch to AI Chat Copilot banner */}
+              <button
+                onClick={() => setActiveTab('chat')}
+                className="w-full py-2 px-3 rounded-lg bg-dark-850 hover:bg-dark-800 border border-gold-500/30 hover:border-gold-500/60 text-xs text-gold-300 font-mono font-bold flex items-center justify-between transition group shadow-md"
+              >
+                <span className="flex items-center space-x-2">
+                  <Bot className="w-4 h-4 text-gold-400 group-hover:animate-bounce" />
+                  <span>Ask DeepSeek / GPT / Claude</span>
+                </span>
+                <span className="text-[10px] bg-gold-500/20 text-gold-400 px-1.5 py-0.5 rounded">
+                  Open Chat →
+                </span>
+              </button>
+
               <AIAnalysisCard
                 prediction={prediction}
                 loading={loading}
@@ -281,21 +299,46 @@ export default function DashboardPage() {
           </div>
         )}
 
-        {/* Tab 2: AI Quant Lab & Backtesting */}
+        {/* Tab 2: AI Copilot & Chart Chat (Side-by-side Chart + Multi-LLM Chat) */}
+        {activeTab === 'chat' && (
+          <div className="grid grid-cols-1 lg:grid-cols-12 gap-3.5">
+            <div className="lg:col-span-7 xl:col-span-7 min-h-[640px] h-[calc(100vh-175px)]">
+              <TradingViewChart
+                candles={candles}
+                timeframe={timeframe}
+                onTimeframeChange={(tf) => setTimeframe(tf)}
+                features={features}
+                prediction={prediction}
+                onPriceUpdate={(p) => setLiveSpotPrice(p)}
+              />
+            </div>
+            <div className="lg:col-span-5 xl:col-span-5 h-[calc(100vh-175px)]">
+              <AIChatCopilot
+                currentPrice={currentPrice}
+                timeframe={timeframe}
+                prediction={prediction}
+                features={features}
+                candles={candles}
+              />
+            </div>
+          </div>
+        )}
+
+        {/* Tab 3: AI Quant Lab & Backtesting */}
         {activeTab === 'backtest' && (
           <div className="w-full">
             <BacktestLab />
           </div>
         )}
 
-        {/* Tab 3: Paper Trading */}
+        {/* Tab 4: Paper Trading */}
         {activeTab === 'paper' && (
           <div className="w-full">
             <PaperTradingView />
           </div>
         )}
 
-        {/* Tab 4: System Risk & Settings */}
+        {/* Tab 5: System Risk & Settings */}
         {activeTab === 'settings' && (
           <div className="w-full">
             <SettingsView />

@@ -1,0 +1,360 @@
+{
+  "XAUUSD_M15": {
+    "setup_id": "AI-XAUUSD-M15-1794606300000",
+    "instrument": "XAUUSD",
+    "timeframe": "M15",
+    "direction": "SELL",
+    "entry_reference_price": 3568.76,
+    "stop_loss_reference": 3576.98,
+    "take_profit_reference": 3558.9,
+    "take_profit_2": 3549.03,
+    "risk_reward_ratio": 1.2,
+    "prediction_timestamp": 1794606300000,
+    "created_at_utc": "2026-11-20 09:47:22 UTC",
+    "confidence": 0.6548,
+    "bullish_probability": 0.3105,
+    "bearish_probability": 0.4551,
+    "neutral_probability": 0.2345,
+    "market_regime": "Ranging",
+    "model_version": "v1.2.1",
+    "contributing_features": {
+      "top_technical_drivers": [
+        "vol_ratio_20",
+        "bb_pct_b",
+        "rsi_14"
+      ],
+      "top_smc_drivers": [
+        "fvg_bullish_unmitigated_count",
+        "fvg_bearish_unmitigated_count",
+        "dealing_range_pos"
+      ],
+      "active_ict_setups": [],
+      "all_model_setups": [
+        {
+          "model_key": "ensemble",
+          "model_name": "Model E: Calibrated Multi-Model Ensemble",
+          "direction": "SELL",
+          "entry_price": 3565.23,
+          "stop_loss": 3575.3,
+          "take_profit": 3553.15,
+          "risk_reward_ratio": 1.2,
+          "risk_distance_usd": 10.07,
+          "confidence_pct": 65.5,
+          "why_explanation": "Stacked meta-calibrator triggers SELL with 65.5% directional confidence, clearing the 50.0% execution filter. 3/5 sub-models agree on Bearish downside. Dynamic ATR Stop Loss at $3575.3 with 1.2 R:R Target at $3553.15.",
+          "key_drivers": [
+            "Meta-Model Stacking",
+            "Confidence 65.5%",
+            "Regime: Ranging"
+          ]
+        },
+        {
+          "model_key": "smc_ict",
+          "model_name": "Model B: SMC & ICT 2022 Mentorship",
+          "direction": "WAIT",
+          "entry_price": 3565.23,
+          "stop_loss": 3555.16,
+          "take_profit": 3590.41,
+          "risk_reward_ratio": 2.5,
+          "risk_distance_usd": 10.07,
+          "confidence_pct": 42.2,
+          "why_explanation": "Model B is in WAIT: No active ICT 2022 Mentorship FVG or Silver Bullet macro window currently triggered. Active swing range: Low $3869.31 \u2500\u2500 High $3879.69 (1.0 dealing range). Awaiting liquidity sweep.",
+          "key_drivers": [
+            "Dealing Range: 1.0",
+            "Swing Low: $3869.31"
+          ]
+        },
+        {
+          "model_key": "technical",
+          "model_name": "Model A: Technical Momentum (Indicators)",
+          "direction": "SELL",
+          "entry_price": 3565.23,
+          "stop_loss": 3575.3,
+          "take_profit": 3545.09,
+          "risk_reward_ratio": 2.0,
+          "risk_distance_usd": 10.07,
+          "confidence_pct": 41.4,
+          "why_explanation": "Model A triggers SELL (41.4% prob): Bearish EMA alignment (code: -1), RSI(14) at 53.5 showing downward expansion, MACD hist at 0.67. Volatility envelope SL at $3575.3 (1.5x ATR buffer: $10.07), TP at $3545.09 (2.0 R:R).",
+          "key_drivers": [
+            "RSI(14): 53.5",
+            "MACD Hist: 0.67",
+            "EMA Align: -1"
+          ]
+        },
+        {
+          "model_key": "price_action",
+          "model_name": "Model D: Price Action & Rejections",
+          "direction": "WAIT",
+          "entry_price": 3565.23,
+          "stop_loss": 3557.17,
+          "take_profit": 3581.35,
+          "risk_reward_ratio": 2.0,
+          "risk_distance_usd": 8.06,
+          "confidence_pct": 41.5,
+          "why_explanation": "Model D is in WAIT: Candlestick morphology (High $3885.31 / Low $3875.37) lacks decisive wick rejection or pin bar formation. Waiting for extreme wick test.",
+          "key_drivers": [
+            "High: $3885.31",
+            "Low: $3875.37",
+            "ATR: $6.71"
+          ]
+        },
+        {
+          "model_key": "volume_profile",
+          "model_name": "Model F: Volume Profile (Auction Theory)",
+          "direction": "WAIT",
+          "entry_price": 3565.23,
+          "stop_loss": 3555.16,
+          "take_profit": 3590.41,
+          "risk_reward_ratio": 2.5,
+          "risk_distance_usd": 10.07,
+          "confidence_pct": 39.7,
+          "why_explanation": "Model F in WAIT: Price ($3565.23) trading within rotation bounds. POC: $3879.39, VAH: $3883.43, VAL: $3875.36.",
+          "key_drivers": [
+            "POC: $3879.39",
+            "VAH: $3883.43",
+            "VAL: $3875.36"
+          ]
+        },
+        {
+          "model_key": "footprint",
+          "model_name": "Model G: Footprint & Order Flow",
+          "direction": "WAIT",
+          "entry_price": 3565.23,
+          "stop_loss": 3557.17,
+          "take_profit": 3581.35,
+          "risk_reward_ratio": 2.0,
+          "risk_distance_usd": 8.06,
+          "confidence_pct": 39.5,
+          "why_explanation": "Model G in WAIT: Delta balanced (+0.4). No significant trapped volume or CVD divergence detected.",
+          "key_drivers": [
+            "Delta: +0.4",
+            "CVD Divergence: Bear"
+          ]
+        }
+      ],
+      "take_profit_2": 3541.06,
+      "tp1": 3553.15,
+      "tp2": 3541.06,
+      "sl": 3575.3,
+      "entry": 3565.23,
+      "submodel_agreement": {
+        "tech_prediction": 0,
+        "smc_prediction": 2,
+        "price_action_prediction": 0,
+        "volume_profile_prediction": 2,
+        "footprint_prediction": 0
+      },
+      "setup_id": "AI-XAUUSD-M15-1794606300000",
+      "entry_range_low": 3567.24,
+      "entry_range_high": 3570.27,
+      "trigger_price": 3568.76,
+      "locked_sl": 3576.98,
+      "locked_tp1": 3558.9,
+      "locked_tp2": 3549.03,
+      "signal_status": "PENDING_TRIGGER",
+      "show_chart_lines": true
+    },
+    "signal_status": "PENDING_TRIGGER",
+    "current_r_multiple": 0.0,
+    "highest_price_seen": 3566.66,
+    "lowest_price_seen": 3565.23,
+    "is_setup_locked": true,
+    "bars_active": 0,
+    "last_evaluated_price": 3565.23,
+    "entry_range_low": 3567.24,
+    "entry_range_high": 3570.27,
+    "trigger_price": 3568.76,
+    "show_chart_lines": true,
+    "trade_ended_reason": null,
+    "trade_ended_at_utc": null,
+    "ai_recommendation_text": "AI Quantitative Model E triggers SELL BIAS (65% edge). Recommend selling when price retests the $3567.24 \u2500\u2500 $3570.27 range.",
+    "distance_to_trigger": 3.53,
+    "setup_validity": "VALID",
+    "is_valid_to_trade": true,
+    "validity_reason": null,
+    "validity_checks": null,
+    "bars_elapsed": 0
+  },
+  "XAUUSD_M5": {
+    "setup_id": "AI-XAUUSD-M5-1794606900000",
+    "instrument": "XAUUSD",
+    "timeframe": "M5",
+    "direction": "SELL",
+    "entry_reference_price": 3564.27,
+    "stop_loss_reference": 3569.09,
+    "take_profit_reference": 3558.49,
+    "take_profit_2": 3552.7,
+    "risk_reward_ratio": 1.2,
+    "prediction_timestamp": 1794606900000,
+    "created_at_utc": "2026-11-20 09:59:13 UTC",
+    "confidence": 0.6212,
+    "bullish_probability": 0.339,
+    "bearish_probability": 0.4296,
+    "neutral_probability": 0.2314,
+    "market_regime": "Ranging",
+    "model_version": "v1.2.1",
+    "contributing_features": {
+      "top_technical_drivers": [
+        "vol_ratio_20",
+        "bb_pct_b",
+        "rsi_14"
+      ],
+      "top_smc_drivers": [
+        "fvg_bullish_unmitigated_count",
+        "fvg_bearish_unmitigated_count",
+        "dealing_range_pos"
+      ],
+      "active_ict_setups": [],
+      "all_model_setups": [
+        {
+          "model_key": "ensemble",
+          "model_name": "Model E: Calibrated Multi-Model Ensemble",
+          "direction": "SELL",
+          "entry_price": 3562.21,
+          "stop_loss": 3568.11,
+          "take_profit": 3555.13,
+          "risk_reward_ratio": 1.2,
+          "risk_distance_usd": 5.9,
+          "confidence_pct": 62.1,
+          "why_explanation": "Stacked meta-calibrator triggers SELL with 62.1% directional confidence, clearing the 50.0% execution filter. 2/5 sub-models agree on Bearish downside. Dynamic ATR Stop Loss at $3568.11 with 1.2 R:R Target at $3555.13.",
+          "key_drivers": [
+            "Meta-Model Stacking",
+            "Confidence 62.1%",
+            "Regime: Ranging"
+          ]
+        },
+        {
+          "model_key": "smc_ict",
+          "model_name": "Model B: SMC & ICT 2022 Mentorship",
+          "direction": "WAIT",
+          "entry_price": 3562.21,
+          "stop_loss": 3556.31,
+          "take_profit": 3576.97,
+          "risk_reward_ratio": 2.5,
+          "risk_distance_usd": 5.9,
+          "confidence_pct": 40.4,
+          "why_explanation": "Model B is in WAIT: No active ICT 2022 Mentorship FVG or Silver Bullet macro window currently triggered. Active swing range: Low $3872.39 \u2500\u2500 High $3878.99 (1.0 dealing range). Awaiting liquidity sweep.",
+          "key_drivers": [
+            "Dealing Range: 1.0",
+            "Swing Low: $3872.39"
+          ]
+        },
+        {
+          "model_key": "technical",
+          "model_name": "Model A: Technical Momentum (Indicators)",
+          "direction": "WAIT",
+          "entry_price": 3562.21,
+          "stop_loss": 3556.31,
+          "take_profit": 3574.01,
+          "risk_reward_ratio": 2.0,
+          "risk_distance_usd": 5.9,
+          "confidence_pct": 40.2,
+          "why_explanation": "Model A is in WAIT: Technical indicator conditions not met (RSI: 61.6, MACD hist: 1.01, EMA alignment: 0). Awaiting clear pullback or momentum expansion.",
+          "key_drivers": [
+            "RSI(14): 61.6",
+            "MACD Hist: 1.01",
+            "EMA Align: 0"
+          ]
+        },
+        {
+          "model_key": "price_action",
+          "model_name": "Model D: Price Action & Rejections",
+          "direction": "BUY",
+          "entry_price": 3562.21,
+          "stop_loss": 3557.49,
+          "take_profit": 3571.65,
+          "risk_reward_ratio": 2.0,
+          "risk_distance_usd": 4.72,
+          "confidence_pct": 41.1,
+          "why_explanation": "Model D triggers BUY (41.1% prob): Candlestick displays lower wick rejection ($-317.26) absorbing sellers off low $3879.47. Tight wick SL at $3557.49 (-$0.50 buffer), TP at $3571.65 (2.0 R:R).",
+          "key_drivers": [
+            "High: $3885.31",
+            "Low: $3879.47",
+            "ATR: $3.93"
+          ]
+        },
+        {
+          "model_key": "volume_profile",
+          "model_name": "Model F: Volume Profile (Auction Theory)",
+          "direction": "WAIT",
+          "entry_price": 3562.21,
+          "stop_loss": 3556.31,
+          "take_profit": 3576.97,
+          "risk_reward_ratio": 2.5,
+          "risk_distance_usd": 5.9,
+          "confidence_pct": 39.8,
+          "why_explanation": "Model F in WAIT: Price ($3562.21) trading within rotation bounds. POC: $3875.92, VAH: $3878.81, VAL: $3873.04.",
+          "key_drivers": [
+            "POC: $3875.92",
+            "VAH: $3878.81",
+            "VAL: $3873.04"
+          ]
+        },
+        {
+          "model_key": "footprint",
+          "model_name": "Model G: Footprint & Order Flow",
+          "direction": "WAIT",
+          "entry_price": 3562.21,
+          "stop_loss": 3557.49,
+          "take_profit": 3571.65,
+          "risk_reward_ratio": 2.0,
+          "risk_distance_usd": 4.72,
+          "confidence_pct": 39.7,
+          "why_explanation": "Model G in WAIT: Delta balanced (+0.0). No significant trapped volume or CVD divergence detected.",
+          "key_drivers": [
+            "Delta: +0.0",
+            "CVD Divergence: Bear"
+          ]
+        }
+      ],
+      "take_profit_2": 3548.05,
+      "tp1": 3555.13,
+      "tp2": 3548.05,
+      "sl": 3568.11,
+      "entry": 3562.21,
+      "submodel_agreement": {
+        "tech_prediction": 2,
+        "smc_prediction": 0,
+        "price_action_prediction": 2,
+        "volume_profile_prediction": 0,
+        "footprint_prediction": 2
+      },
+      "setup_id": "AI-XAUUSD-M5-1794606900000",
+      "entry_range_low": 3563.39,
+      "entry_range_high": 3565.16,
+      "trigger_price": 3564.27,
+      "locked_sl": 3569.09,
+      "locked_tp1": 3558.49,
+      "locked_tp2": 3552.7,
+      "signal_status": "PENDING_TRIGGER",
+      "show_chart_lines": true,
+      "setup_validity": "VALID",
+      "is_valid_to_trade": true
+    },
+    "signal_status": "PENDING_TRIGGER",
+    "current_r_multiple": 0.0,
+    "highest_price_seen": 3562.68,
+    "lowest_price_seen": 3541.16,
+    "is_setup_locked": true,
+    "bars_active": 0,
+    "last_evaluated_price": 3547.28,
+    "entry_range_low": 3563.39,
+    "entry_range_high": 3565.16,
+    "trigger_price": 3564.27,
+    "show_chart_lines": false,
+    "trade_ended_reason": "\u274c INVALIDATED (Missed Move): Price hit TP1 ($3558.49) before entry fill. The downside expansion is already completed \u2014 DO NOT ENTER.",
+    "trade_ended_at_utc": null,
+    "ai_recommendation_text": "AI Quantitative Model E triggers SELL BIAS (62% edge). Recommend selling when price retests the $3563.39 \u2500\u2500 $3565.16 range.",
+    "distance_to_trigger": 16.99,
+    "setup_validity": "INVALIDATED",
+    "is_valid_to_trade": false,
+    "validity_reason": "\u274c INVALIDATED (Missed Move): Price hit TP1 ($3558.49) before entry fill. The downside expansion is already completed \u2014 DO NOT ENTER.",
+    "validity_checks": {
+      "structure_intact": true,
+      "target_not_frontrun": false,
+      "macro_news_safe": true,
+      "time_decay_valid": true,
+      "risk_reward_viable": true
+    },
+    "bars_elapsed": 0
+  }
+}

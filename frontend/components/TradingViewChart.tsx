@@ -516,6 +516,7 @@ export default function TradingViewChart({
         showRRBoxes &&
         prediction &&
         prediction.show_chart_lines &&
+        prediction.is_valid_to_trade !== false &&
         (prediction.direction === 'BUY' || prediction.direction === 'SELL');
 
       if (shouldDisplayLines) {

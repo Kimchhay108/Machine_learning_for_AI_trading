@@ -72,6 +72,11 @@ class PredictionResponse(BaseModel):
     trade_ended_reason: Optional[str] = None
     ai_recommendation_text: Optional[str] = None
     distance_to_trigger: Optional[float] = None
+    setup_validity: Optional[str] = "VALID"
+    is_valid_to_trade: Optional[bool] = True
+    validity_reason: Optional[str] = None
+    validity_checks: Optional[Dict[str, bool]] = None
+    bars_elapsed: Optional[int] = 0
 
 
 class ModelInfo(BaseModel):

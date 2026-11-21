@@ -129,6 +129,18 @@ export interface PredictionResponse {
   trade_ended_reason?: string;
   ai_recommendation_text?: string;
   distance_to_trigger?: number;
+  setup_validity?: 'VALID' | 'TRIGGERED' | 'INVALIDATED' | 'EXPIRED' | 'SCANNING' | string;
+  is_valid_to_trade?: boolean;
+  validity_reason?: string;
+  validity_checks?: {
+    structure_intact?: boolean;
+    target_not_frontrun?: boolean;
+    macro_news_safe?: boolean;
+    time_decay_valid?: boolean;
+    risk_reward_viable?: boolean;
+    [key: string]: boolean | undefined;
+  };
+  bars_elapsed?: number;
 }
 
 export interface ModelInfo {
@@ -552,6 +564,99 @@ export async function startPaperTrading(): Promise<any> {
 export async function stopPaperTrading(): Promise<any> {
   const res = await fetch(`${API_BASE}/api/paper/stop`, { method: 'POST' });
   if (!res.ok) throw new Error('Stop paper trading failed');
+  return res.json();
+}
+
+// ============================================================================
+// Multi-LLM Chat & Real-Time Chart Analysis (DeepSeek, ChatGPT, Claude, Gemini)
+// ============================================================================
+
+export interface LLMModelItem {
+  id: string;
+  name: string;
+  provider: 'deepseek' | 'openai' | 'anthropic' | 'gemini' | 'local';
+  provider_name: string;
+  description: string;
+  strengths: string[];
+  has_reasoning: boolean;
+  context_window: string;
+  pricing: string;
+  is_default: boolean;
+}
+
+export interface ChatMessageItem {
+  role: 'system' | 'user' | 'assistant';
+  content: string;
+  reasoning_content?: string;
+  timestamp?: string;
+}
+
+export interface ChartContextPayload {
+  instrument: string;
+  timeframe: string;
+  current_price?: number;
+  candle_high?: number;
+  candle_low?: number;
+  atr_14?: number;
+  rsi_14?: number;
+  market_regime?: string;
+  signal_status?: string;
+  direction?: string;
+  confidence?: number;
+  entry_range_low?: number;
+  entry_range_high?: number;
+  trigger_price?: number;
+  stop_loss?: number;
+  take_profit_1?: number;
+  take_profit_2?: number;
+  setup_validity?: string;
+  validity_reason?: string;
+  recent_candles?: any[];
+  smc_details?: any;
+  macro_news_safe?: boolean;
+}
+
+export interface ChatRequestPayload {
+  messages: { role: string; content: string }[];
+  provider: string;
+  model: string;
+  api_key?: string;
+  chart_context?: ChartContextPayload;
+  temperature?: number;
+  max_tokens?: number;
+}
+
+export interface ChatResponsePayload {
+  provider: string;
+  model: string;
+  content: string;
+  reasoning_content?: string | null;
+  chart_summary?: string | null;
+  created_at: string;
+}
+
+export async function fetchChatModels(): Promise<LLMModelItem[]> {
+  const res = await fetch(`${API_BASE}/api/llm/models`);
+  if (!res.ok) throw new Error('Failed to fetch LLM models');
+  return res.json();
+}
+
+export async function fetchProviderStatus(): Promise<Record<string, any>> {
+  const res = await fetch(`${API_BASE}/api/llm/status`);
+  if (!res.ok) throw new Error('Failed to fetch provider status');
+  return res.json();
+}
+
+export async function sendChatMessage(payload: ChatRequestPayload): Promise<ChatResponsePayload> {
+  const res = await fetch(`${API_BASE}/api/llm/chat`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload),
+  });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({ detail: 'Chat request failed' }));
+    throw new Error(err.detail || 'Chat request failed');
+  }
   return res.json();
 }
 

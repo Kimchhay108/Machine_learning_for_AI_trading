@@ -114,6 +114,11 @@ def get_prediction(
             trade_ended_reason=active_state.trade_ended_reason,
             ai_recommendation_text=active_state.ai_recommendation_text,
             distance_to_trigger=active_state.distance_to_trigger,
+            setup_validity=active_state.setup_validity,
+            is_valid_to_trade=active_state.is_valid_to_trade,
+            validity_reason=active_state.validity_reason,
+            validity_checks=active_state.validity_checks,
+            bars_elapsed=active_state.bars_elapsed,
         )
 
     # 2. No active trade running: evaluate AI model
@@ -169,6 +174,11 @@ def get_prediction(
             trade_ended_reason=None,
             ai_recommendation_text=locked_state.ai_recommendation_text,
             distance_to_trigger=locked_state.distance_to_trigger,
+            setup_validity=locked_state.setup_validity,
+            is_valid_to_trade=locked_state.is_valid_to_trade,
+            validity_reason=locked_state.validity_reason,
+            validity_checks=locked_state.validity_checks,
+            bars_elapsed=locked_state.bars_elapsed,
         )
 
     # 4. Market is in SCANNING / Observation mode (no lines on chart!)
@@ -184,6 +194,17 @@ def get_prediction(
     pred_dict["trade_ended_reason"] = None
     pred_dict["ai_recommendation_text"] = "AI Observation Mode: Scanning structural imbalance and order blocks. No trade active."
     pred_dict["distance_to_trigger"] = 0.0
+    pred_dict["setup_validity"] = "SCANNING"
+    pred_dict["is_valid_to_trade"] = False
+    pred_dict["validity_reason"] = "Awaiting institutional confluence and optimal R:R before arming setup."
+    pred_dict["validity_checks"] = {
+        "structure_intact": True,
+        "target_not_frontrun": True,
+        "macro_news_safe": True,
+        "time_decay_valid": True,
+        "risk_reward_viable": True,
+    }
+    pred_dict["bars_elapsed"] = 0
     return PredictionResponse(**pred_dict)
 
 
