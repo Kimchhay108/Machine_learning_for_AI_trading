@@ -489,7 +489,9 @@ export default function AIChatCopilot({
                     >
                       <span className="flex items-center space-x-2">
                         <Brain className="w-3.5 h-3.5 text-indigo-400 animate-pulse" />
-                        <span>🧠 DeepSeek-R1 Thinking Process (Chain-of-Thought)</span>
+                        <span>
+                          🧠 {currentSelectedModel?.has_reasoning ? `${currentSelectedModel.name} Thinking Process` : 'Model E Quantitative Reasoning Trace'} (Chain-of-Thought)
+                        </span>
                       </span>
                       {expandedReasoning[idx] ? (
                         <ChevronDown className="w-3.5 h-3.5" />
