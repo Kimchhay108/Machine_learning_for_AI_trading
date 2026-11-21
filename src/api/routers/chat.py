@@ -538,20 +538,20 @@ def generate_local_model_e_analysis(
     """Dynamically answer the user's specific inquiry using local quantitative models and real-time chart state."""
     p = ctx.current_price if (ctx and ctx.current_price) else 3554.58
     direction = (ctx.direction if ctx and ctx.direction else "SELL").upper()
-    conf = int((ctx.confidence or 0.62) * 100)
-    atr = ctx.atr_14 or 3.85
-    rsi = ctx.rsi_14 or 46.5
-    regime = ctx.market_regime or "Ranging"
-    status_str = ctx.signal_status or "PENDING_TRIGGER"
-    range_l = ctx.entry_range_low or 3563.39
-    range_h = ctx.entry_range_high or 3565.16
-    trigger = ctx.trigger_price or 3564.27
-    sl = ctx.stop_loss or 3569.09
-    tp1 = ctx.take_profit_1 or 3558.49
-    tp2 = ctx.take_profit_2 or 3552.70
-    validity = ctx.setup_validity or "INVALIDATED"
-    reason = ctx.validity_reason or "❌ INVALIDATED (Missed Move): Price hit TP1 ($3558.49) before entry fill."
-    tf = ctx.timeframe if ctx else "M5"
+    conf = int(((ctx.confidence if ctx else None) or 0.62) * 100)
+    atr = (ctx.atr_14 if ctx else None) or 3.85
+    rsi = (ctx.rsi_14 if ctx else None) or 46.5
+    regime = (ctx.market_regime if ctx else None) or "Ranging"
+    status_str = (ctx.signal_status if ctx else None) or "PENDING_TRIGGER"
+    range_l = (ctx.entry_range_low if ctx else None) or 3563.39
+    range_h = (ctx.entry_range_high if ctx else None) or 3565.16
+    trigger = (ctx.trigger_price if ctx else None) or 3564.27
+    sl = (ctx.stop_loss if ctx else None) or 3569.09
+    tp1 = (ctx.take_profit_1 if ctx else None) or 3558.49
+    tp2 = (ctx.take_profit_2 if ctx else None) or 3552.70
+    validity = (ctx.setup_validity if ctx else None) or "INVALIDATED"
+    reason = (ctx.validity_reason if ctx else None) or "❌ INVALIDATED (Missed Move): Price hit TP1 ($3558.49) before entry fill."
+    tf = (ctx.timeframe if ctx else None) or "M5"
 
     risk_dist = abs(trigger - sl) if abs(trigger - sl) > 0 else 4.82
 
@@ -666,42 +666,8 @@ def generate_local_model_e_analysis(
             f"1% budget = ${risk_1pct:.2f} -> {lots_1pct:.2f} standard lots."
         )
 
-    # 5. Educational / SMC Concepts ("What is FVG?", "Order Block", "Liquidity", "BOS", "CHoCH")
-    elif any(k in q_lower for k in ["fvg", "fair value gap", "order block", "ob", "sweep", "liquidity", "bos", "choch", "smc"]):
-        content = (
-            f"### 📚 Smart Money Concepts (SMC) & Institutional Gold Mechanics\n\n"
-            f"#### 1. What is an Order Block (OB)?\n"
-            f"An **Order Block** is the last opposing candle before an aggressive impulse move that breaks structure (BOS). It marks where institutional banks placed large limit orders. When price returns to this zone, banks often defend their positioning.\n\n"
-            f"#### 2. What is a Fair Value Gap (FVG)?\n"
-            f"An **FVG** is a 3-candle price pattern where candle 1's high and candle 3's low do not overlap. The empty space in candle 2 represents an **institutional imbalance** where buy/sell volume was asymmetrical. Price acts like a magnet to rebalance this gap.\n\n"
-            f"#### 3. What is a Liquidity Sweep?\n"
-            f"Retail stop losses pool above recent swing highs (buy stops) and below swing lows (sell stops). Institutional algorithms intentionally push price through these levels to **harvest liquidity** before reversing into the true directional expansion.\n\n"
-            f"**On XAUUSD Right Now:** Price is trading at **`${p:.2f}`**. Watch for liquidity sweeps above the session highs before looking for reversal confirmation."
-        )
-        reasoning = (
-            f"Identified educational SMC inquiry. Provided definitions for Order Blocks, FVGs, and Liquidity Sweeps "
-            f"contextualized with current Gold spot price (${p:.2f})."
-        )
-
-    # 6. Specific Question About Repetition / "Same Thing" / "Why Only This"
-    elif any(k in q_lower for k in ["same thing", "only show this", "why always", "repeat", "stuck"]):
-        content = (
-            f"### 💡 Why Were You Seeing the Same Message?\n\n"
-            f"You were previously seeing the static template because **no external API key** (such as DeepSeek, OpenAI, Claude, or Gemini) was provided, and the fallback engine was returning a static report.\n\n"
-            f"**This is now fixed!** The built-in **Local Model E Engine** will now directly and dynamically answer whatever question you ask — whether it is lot sizing, invalidation reasons, technical indicators, or educational concepts.\n\n"
-            f"#### 🚀 Want to Use Frontier AI Models?\n"
-            f"If you want to chat directly with **DeepSeek R1**, **ChatGPT (GPT-4o)**, **Claude 3.5 Sonnet**, or **Google Gemini**:\n"
-            f"1. Click the 🔑 **Add API Key** button in the top right corner.\n"
-            f"2. Paste your API key (Note: Google Gemini keys are **100% free** at [aistudio.google.com](https://aistudio.google.com) with no credit card required).\n"
-            f"3. Select your model from the dropdown and start chatting!"
-        )
-        reasoning = (
-            f"Detected user feedback regarding repetitive output. Explained the API key fallback mechanism "
-            f"and highlighted dynamic local engine updates."
-        )
-
-    # 7. Default: Full Institutional Chart Breakdown
-    else:
+    # 5. Explicit Chart Analysis Request (e.g. 'Analyze current Gold market structure...')
+    elif any(k in q_lower for k in ["analyze", "analysis", "breakdown", "overview", "market structure", "chart", "levels", "plan", "forecast"]):
         content = (
             f"### 🏛️ Institutional Quantitative Analysis — Gold (XAUUSD)\n\n"
             f"**Live Price:** `${p:.2f}` | **Timeframe:** `{tf}` | **Regime:** `{regime}`\n\n"
@@ -724,6 +690,44 @@ def generate_local_model_e_analysis(
             f"1. Context Ingestion: XAUUSD live spot quoted at ${p:.2f} on {tf}.\n"
             f"2. Evaluated Model E ensemble: {direction} bias ({conf}% edge).\n"
             f"3. Formulated stationary risk levels: SL ${sl:.2f}, TP1 ${tp1:.2f}, TP2 ${tp2:.2f}."
+        )
+
+    # 6. Educational / SMC Concepts ("What is FVG?", "What is Order Block?", "Explain liquidity")
+    elif any(k in q_lower for k in ["what is", "explain", "fvg", "fair value gap", "order block", "ob", "sweep", "liquidity", "bos", "choch", "smc"]):
+        content = (
+            f"### 📚 Smart Money Concepts (SMC) & Institutional Gold Mechanics\n\n"
+            f"#### 1. What is an Order Block (OB)?\n"
+            f"An **Order Block** is the last opposing candle before an aggressive impulse move that breaks structure (BOS). It marks where institutional banks placed large limit orders. When price returns to this zone, banks often defend their positioning.\n\n"
+            f"#### 2. What is a Fair Value Gap (FVG)?\n"
+            f"An **FVG** is a 3-candle price pattern where candle 1's high and candle 3's low do not overlap. The empty space in candle 2 represents an **institutional imbalance** where buy/sell volume was asymmetrical. Price acts like a magnet to rebalance this gap.\n\n"
+            f"#### 3. What is a Liquidity Sweep?\n"
+            f"Retail stop losses pool above recent swing highs (buy stops) and below swing lows (sell stops). Institutional algorithms intentionally push price through these levels to **harvest liquidity** before reversing into the true directional expansion.\n\n"
+            f"**On XAUUSD Right Now:** Price is trading at **`${p:.2f}`**. Watch for liquidity sweeps above the session highs before looking for reversal confirmation."
+        )
+        reasoning = (
+            f"Identified educational SMC inquiry. Provided definitions for Order Blocks, FVGs, and Liquidity Sweeps "
+            f"contextualized with current Gold spot price (${p:.2f})."
+        )
+
+    # 8. Unrecognized / Arbitrary text in Offline Mode (e.g. 'adadad')
+    else:
+        content = (
+            f"### 💬 Offline Copilot Mode (No API Key Connected)\n\n"
+            f"I received: **\"{last_user_query}\"**\n\n"
+            f"Because **no external API key** is connected yet, I am running in **Offline Mode**. "
+            f"I cannot have free-form conversational chat without an active AI connection.\n\n"
+            f"**Try asking one of these supported trading questions:**\n"
+            f"- 📊 **\"Analyze current chart\"** (or click the gold button above)\n"
+            f"- ❓ **\"Why is the setup invalidated?\"**\n"
+            f"- 🛡️ **\"Calculate lot size for $5,000\"**\n"
+            f"- 🧭 **\"Why SELL?\"** or **\"Why BUY?\"**\n"
+            f"- 📚 **\"What is an Order Block?\"**\n\n"
+            f"👉 **To chat freely about any topic with real DeepSeek, ChatGPT, or Claude:**\n"
+            f"Click the 🔑 **Add API Key** button in the top right to paste your key. *(Tip: Google Gemini keys are **100% free** at [aistudio.google.com](https://aistudio.google.com) with no credit card required).* "
+        )
+        reasoning = (
+            f"Received arbitrary input '{last_user_query}' in offline mode with no external API key. "
+            f"Informed user of offline constraints and prompted for API key or supported commands."
         )
 
     # Prepend helpful notice if this was a fallback from an unconfigured external model
